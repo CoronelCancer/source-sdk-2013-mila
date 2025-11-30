@@ -33,6 +33,11 @@ class CBaseViewModel : public CBaseAnimating, public IHasOwner
 	DECLARE_CLASS( CBaseViewModel, CBaseAnimating );
 public:
 
+#ifdef SecobMod__IRONSIGHT_ENABLED
+	bool m_bExpSighted;
+	float m_expFactor;
+#endif //SecobMod__IRONSIGHT_ENABLED
+
 	DECLARE_NETWORKCLASS();
 	DECLARE_PREDICTABLE();
 
@@ -126,7 +131,7 @@ public:
 
 	virtual bool			Interpolate( float currentTime );
 
-	virtual bool			ShouldFlipViewModel() OVERRIDE;
+	bool					ShouldFlipViewModel();
 	void					UpdateAnimationParity( void );
 
 	virtual void			ApplyBoneMatrixTransform( matrix3x4_t& transform );

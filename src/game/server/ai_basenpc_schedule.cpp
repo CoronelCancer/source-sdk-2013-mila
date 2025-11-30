@@ -2384,7 +2384,7 @@ void CAI_BaseNPC::StartTask( const Task_t *pTask )
 					}
 					else
 					{
-						int iSequence = LookupSequence(STRING(GetHintNode()->HintActivityName()));
+						int iSequence = LookupSequence(STRING(GetHintNode()->HintActivityName()));;
 						if ( iSequence != ACT_INVALID )
 							GetNavigator()->SetArrivalSequence( iSequence );
 					}
@@ -3275,7 +3275,7 @@ void CAI_BaseNPC::RunTask( const Task_t *pTask )
 						DbgNavMsg( this, "Jump landed\n" );
 						SetNavType( NAV_GROUND ); // this assumes that NAV_JUMP only happens with npcs that use NAV_GROUND as base movement
 					}
-					else if (GetSmoothedVelocity().Length() > 0.01) // use an EPSILON
+					else if (GetSmoothedVelocity().Length() > 0.01) // use an EPSILON damnit!!
 					{
 						// wait until you land
 						break;
@@ -3363,7 +3363,11 @@ void CAI_BaseNPC::RunTask( const Task_t *pTask )
 	case TASK_FACE_PLAYER:
 		{
 			// Get edict for one player
-			CBasePlayer *pPlayer = AI_GetSinglePlayer();
+			#ifdef SecobMod__Enable_Fixed_Multiplayer_AI
+				CBasePlayer *pPlayer = UTIL_GetNearestVisiblePlayer(this); 
+			#else
+				CBasePlayer *pPlayer = AI_GetSinglePlayer();
+			#endif //SecobMod__Enable_Fixed_Multiplayer_AI
 			if ( pPlayer )
 			{
 				GetMotor()->SetIdealYawToTargetAndUpdate( pPlayer->GetAbsOrigin(), AI_KEEP_YAW_SPEED );
@@ -3661,7 +3665,12 @@ void CAI_BaseNPC::RunTask( const Task_t *pTask )
 
 						if( pHint )
 						{
-							CBasePlayer *pPlayer = AI_GetSinglePlayer();
+							#ifdef SecobMod__Enable_Fixed_Multiplayer_AI
+								CBasePlayer *pPlayer = UTIL_GetNearestPlayer(GetAbsOrigin()); 
+							#else
+								CBasePlayer *pPlayer = AI_GetSinglePlayer();
+							#endif //SecobMod__Enable_Fixed_Multiplayer_AI
+							
 							Vector vecGoal = pHint->GetAbsOrigin();
 
 							if( vecGoal.DistToSqr(GetAbsOrigin()) < vecGoal.DistToSqr(pPlayer->GetAbsOrigin()) )

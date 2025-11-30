@@ -54,6 +54,8 @@ BEGIN_DATADESC( CBaseGrenade )
 
 END_DATADESC()
 
+void SendProxy_CropFlagsToPlayerFlagBitsLength( const SendProp *pProp, const void *pStruct, const void *pVarData, DVariant *pOut, int iElement, int objectID);
+
 #endif
 
 IMPLEMENT_NETWORKCLASS_ALIASED( BaseGrenade, DT_BaseGrenade )
@@ -68,7 +70,7 @@ BEGIN_NETWORK_TABLE( CBaseGrenade, DT_BaseGrenade )
 
 	SendPropVector( SENDINFO( m_vecVelocity ), 0, SPROP_NOSCALE ), 
 	// HACK: Use same flag bits as player for now
-	SendPropInt			( SENDINFO(m_fFlags), 0, SPROP_UNSIGNED ),
+	SendPropInt			( SENDINFO(m_fFlags), PLAYER_FLAG_BITS, SPROP_UNSIGNED, SendProxy_CropFlagsToPlayerFlagBitsLength ),
 #else
 	RecvPropFloat( RECVINFO( m_flDamage ) ),
 	RecvPropFloat( RECVINFO( m_DmgRadius ) ),
@@ -185,7 +187,8 @@ void CBaseGrenade::Explode( trace_t *pTrace, int bitsDamageType )
 	AddEffects( EF_NODRAW );
 	SetAbsVelocity( vec3_origin );
 
-#if HL2_EPISODIC
+//SecobMod__IFDEF_Fixes
+#ifdef HL2_EPISODIC
 	// Because the grenade is zipped out of the world instantly, the EXPLOSION sound that it makes for
 	// the AI is also immediately destroyed. For this reason, we now make the grenade entity inert and
 	// throw it away in 1/10th of a second instead of right away. Removing the grenade instantly causes

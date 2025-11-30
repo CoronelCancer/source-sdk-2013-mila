@@ -29,9 +29,7 @@ public:
 
 	// Tell the client that this camera needs to be rendered
 	void SetActive( bool bActive );
-	int  ShouldTransmit( const CCheckTransmitInfo *pInfo );
-	int  UpdateTransmitState( void );
-	void TransmitToPlayer( int nPlayerIndex, bool bTransmit );
+	int  UpdateTransmitState(void);
 
 	void ChangeFOVThink( void );
 
@@ -51,14 +49,11 @@ private:
 	CNetworkVar( float, m_flFogStart );
 	CNetworkVar( float, m_flFogEnd );
 	CNetworkVar( float, m_flFogMaxDensity );
-	CNetworkVar( bool, m_bFogRadial );
 	CNetworkVar( bool, m_bActive );
 	CNetworkVar( bool, m_bUseScreenAspectRatio );
 
 	// Allows the mapmaker to control whether a camera is active or not
 	bool	m_bIsOn;
-
-	CBitVec< MAX_PLAYERS > m_bitsTransmitPlayers;
 
 public:
 	CPointCamera	*m_pNext;

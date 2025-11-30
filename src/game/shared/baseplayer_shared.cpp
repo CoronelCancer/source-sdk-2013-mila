@@ -214,7 +214,27 @@ bool CBasePlayer::UsingStandardWeaponsInVehicle( void )
 	// may dump us out of the vehicle
 	int nRole = pVehicle->GetPassengerRole( this );
 	bool bUsingStandardWeapons = pVehicle->IsPassengerUsingStandardWeapons( nRole );
+	
+	#ifdef SecobMod__ENABLE_FAKE_PASSENGER_SEATS
+	//SecobMod__Information: Get the name of our vehicles entity. If it's our passenger seat, then give the player the ability to use their weapons in-car.
+	// You may be wondering why we don't just set IsPassengerUsingStandardWeapons to true in our passenger seat code, we did try this and discovered that 
+	//even if you give your player a different nrole (eg vehicle_passenger) it still says somewhere in the code (which we couldn't find) that your nrole is
+	//that of driver if you're the sole occupant so always returns false for using standard weapons. As such this code works perfectly for getting round the problem.
+	CBaseEntity *pVehicleEnt = pVehicle->GetVehicleEnt();
 
+	if( FClassnameIs( pVehicleEnt, "prop_vehicle_ss_passengerseat" ) ||
+	  ( FClassnameIs( pVehicleEnt, "C_PropVehicleSSPassengerSeat" )  ||
+	  ( FClassnameIs( pVehicleEnt, "class C_PropVehicleSSPassengerSeat" )))
+	  )
+	{
+		return true;
+	}
+	else
+	{
+		return false;
+	}
+	#endif //SecobMod__ENABLE_FAKE_PASSENGER_SEATS
+		
 	// Fall through and check weapons, etc. if we're using them 
 	if (!bUsingStandardWeapons )
 		return false;
@@ -696,7 +716,8 @@ void CBasePlayer::PlayStepSound( Vector &vecOrigin, surfacedata_t *psurface, flo
 	}
 	else
 	{
-		const char *pSoundName = MoveHelper()->GetSurfaceProps()->GetString( stepSoundName );
+		IPhysicsSurfaceProps *physprops = MoveHelper()->GetSurfaceProps();
+		const char *pSoundName = physprops->GetString( stepSoundName );
 
 		// Give child classes an opportunity to override.
 		pSoundName = GetOverrideStepSound( pSoundName );
@@ -1796,6 +1817,7 @@ float CBasePlayer::GetFOVDistanceAdjustFactor()
 	// If FOV is lower, then we're "zoomed" in and this will give a factor < 1 so apparent LOD distances can be
 	//  shorted accordingly
 	return localFOV / defaultFOV;
+
 }
 
 //-----------------------------------------------------------------------------
@@ -1853,20 +1875,6 @@ void CBasePlayer::SharedSpawn()
 	if(IsLocalPlayer() &&haptics)
 		haptics->LocalPlayerReset();
 #endif
-}
-
-
-//-----------------------------------------------------------------------------
-// Purpose: 
-//-----------------------------------------------------------------------------
-bool CBasePlayer::IsLerpingFOV( void ) const
-{
-	// If it's immediate, just do it
-	if (m_Local.m_flFOVRate == 0.0f)
-		return false;
-
-	float deltaTime = (float)(gpGlobals->curtime - m_flFOVTime) / m_Local.m_flFOVRate;
-	return deltaTime < 1.f;
 }
 
 
@@ -2077,7 +2085,6 @@ bool fogparams_t::operator !=( const fogparams_t& other ) const
 {
 	if ( this->enable != other.enable ||
 		this->blend != other.blend ||
-		this->radial != other.radial ||
 		!VectorsAreEqual(this->dirPrimary, other.dirPrimary, 0.01f ) || 
 		this->colorPrimary.Get() != other.colorPrimary.Get() ||
 		this->colorSecondary.Get() != other.colorSecondary.Get() ||

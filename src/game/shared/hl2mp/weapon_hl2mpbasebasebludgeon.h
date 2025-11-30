@@ -34,6 +34,12 @@ public:
 	DECLARE_NETWORKCLASS(); 
 	DECLARE_PREDICTABLE();
 
+	#ifdef SecobMod__Enable_Fixed_Multiplayer_AI
+		#ifndef CLIENT_DLL 
+		int		CapabilitiesGet( void ) { return bits_CAP_WEAPON_MELEE_ATTACK1; } 
+		#endif 
+	#endif //SecobMod__Enable_Fixed_Multiplayer_AI
+	
 	virtual	void	Spawn( void );
 	virtual	void	Precache( void );
 	
@@ -52,8 +58,6 @@ public:
 	virtual	float	GetDamageForActivity( Activity hitActivity )	{	return	1.0f;	}
 
 	CBaseHL2MPBludgeonWeapon( const CBaseHL2MPBludgeonWeapon & );
-
-	virtual bool	PlayFleshyHittySoundOnHit() const { return false; }
 
 protected:
 	virtual	void	ImpactEffect( trace_t &trace );

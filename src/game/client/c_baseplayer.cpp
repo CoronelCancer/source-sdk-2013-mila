@@ -50,10 +50,6 @@
 #include "sourcevr/isourcevirtualreality.h"
 #include "client_virtualreality.h"
 
-#ifdef TF_CLIENT_DLL
-#include "tf_gamerules.h"
-#endif
-
 #if defined USES_ECON_ITEMS
 #include "econ_wearable.h"
 #endif
@@ -74,6 +70,10 @@ int g_nKillCamTarget1 = 0;
 int g_nKillCamTarget2 = 0;
 
 extern ConVar mp_forcecamera; // in gamevars_shared.h
+
+#ifdef SecobMod__ENABLE_NIGHTVISION_FOR_HEAVY_CLASS
+	extern int m_iClientClass;
+#endif //SecobMod__ENABLE_NIGHTVISION_FOR_HEAVY_CLASS
 
 #define FLASHLIGHT_DISTANCE		1000
 #define MAX_VGUI_INPUT_MODE_SPEED 30
@@ -115,7 +115,7 @@ ConVar	spec_freeze_distance_min( "spec_freeze_distance_min", "96", FCVAR_CHEAT, 
 ConVar	spec_freeze_distance_max( "spec_freeze_distance_max", "200", FCVAR_CHEAT, "Maximum random distance from the target to stop when framing them in observer freeze cam." );
 #endif
 
-static ConVar	cl_first_person_uses_world_model ( "cl_first_person_uses_world_model", "0", FCVAR_NONE, "Causes the third person model to be drawn instead of the view model" );
+static ConVar	cl_first_person_uses_world_model ( "cl_first_person_uses_world_model", "0", FCVAR_ARCHIVE, "Causes the third person model to be drawn instead of the view model" );
 
 ConVar demo_fov_override( "demo_fov_override", "0", FCVAR_CLIENTDLL | FCVAR_DONTRECORD, "If nonzero, this value will be used to override FOV during demo playback." );
 
@@ -177,7 +177,6 @@ BEGIN_RECV_TABLE_NOBASE( CPlayerLocalData, DT_Local )
 	RecvPropInt		(RECVINFO(m_bDrawViewmodel)),
 	RecvPropInt		(RECVINFO(m_bWearingSuit)),
 	RecvPropBool	(RECVINFO(m_bPoisoned)),
-	RecvPropBool	(RECVINFO(m_bForceLocalPlayerDraw)),
 	RecvPropFloat	(RECVINFO(m_flStepSize)),
 	RecvPropInt		(RECVINFO(m_bAllowAutoMovement)),
 
@@ -189,7 +188,6 @@ BEGIN_RECV_TABLE_NOBASE( CPlayerLocalData, DT_Local )
 	// 3d skybox fog data
 	RecvPropInt( RECVINFO( m_skybox3d.fog.enable ) ),
 	RecvPropInt( RECVINFO( m_skybox3d.fog.blend ) ),
-	RecvPropInt( RECVINFO( m_skybox3d.fog.radial ) ),
 	RecvPropVector( RECVINFO( m_skybox3d.fog.dirPrimary ) ),
 	RecvPropInt( RECVINFO( m_skybox3d.fog.colorPrimary ) ),
 	RecvPropInt( RECVINFO( m_skybox3d.fog.colorSecondary ) ),
@@ -211,9 +209,7 @@ BEGIN_RECV_TABLE_NOBASE( CPlayerLocalData, DT_Local )
 	RecvPropVector( RECVINFO( m_audio.localSound[7] ) ),
 	RecvPropInt( RECVINFO( m_audio.soundscapeIndex ) ),
 	RecvPropInt( RECVINFO( m_audio.localBits ) ),
-	RecvPropInt( RECVINFO( m_audio.entIndex ) ),
-
-	RecvPropString( RECVINFO( m_szScriptOverlayMaterial ) ),
+	RecvPropEHandle( RECVINFO( m_audio.ent ) ),
 END_RECV_TABLE()
 
 // -------------------------------------------------------------------------------- //
@@ -294,6 +290,11 @@ END_RECV_TABLE()
 		RecvPropInt		(RECVINFO(m_iBonusChallenge)),
 
 		RecvPropFloat	(RECVINFO(m_flMaxspeed)),
+		
+		#ifdef SecobMod__USE_PLAYERCLASSES
+			RecvPropFloat	(RECVINFO(m_iJumpHeight)),
+		#endif //SecobMod__USE_PLAYERCLASSES
+		
 		RecvPropInt		(RECVINFO(m_fFlags)),
 
 
@@ -326,7 +327,6 @@ BEGIN_PREDICTION_DATA_NO_BASE( CPlayerLocalData )
 	// DEFINE_PRED_TYPEDESCRIPTION( m_fog, fogparams_t ),
 	// DEFINE_PRED_TYPEDESCRIPTION( m_audio, audioparams_t ),
 	DEFINE_FIELD( m_nStepside, FIELD_INTEGER ),
-	DEFINE_FIELD( m_bPrevForceLocalPlayerDraw, FIELD_BOOLEAN ),
 
 	DEFINE_PRED_FIELD( m_iHideHUD, FIELD_INTEGER, FTYPEDESC_INSENDTABLE ),
 #if PREDICTION_ERROR_CHECK_LEVEL > 1
@@ -339,7 +339,6 @@ BEGIN_PREDICTION_DATA_NO_BASE( CPlayerLocalData )
 	DEFINE_PRED_FIELD( m_bDrawViewmodel, FIELD_BOOLEAN, FTYPEDESC_INSENDTABLE ),
 	DEFINE_PRED_FIELD( m_bWearingSuit, FIELD_BOOLEAN, FTYPEDESC_INSENDTABLE ),
 	DEFINE_PRED_FIELD( m_bPoisoned, FIELD_BOOLEAN, FTYPEDESC_INSENDTABLE ),
-	DEFINE_PRED_FIELD( m_bForceLocalPlayerDraw, FIELD_BOOLEAN, FTYPEDESC_INSENDTABLE ),
 	DEFINE_PRED_FIELD( m_bAllowAutoMovement, FIELD_BOOLEAN, FTYPEDESC_INSENDTABLE ),
 
 	DEFINE_PRED_FIELD( m_bDucked, FIELD_BOOLEAN, FTYPEDESC_INSENDTABLE ),
@@ -351,7 +350,6 @@ BEGIN_PREDICTION_DATA_NO_BASE( CPlayerLocalData )
 	DEFINE_PRED_FIELD_TOL( m_flFallVelocity, FIELD_FLOAT, FTYPEDESC_INSENDTABLE, 0.5f ),
 //	DEFINE_PRED_FIELD( m_nOldButtons, FIELD_INTEGER, FTYPEDESC_INSENDTABLE ),
 	DEFINE_FIELD( m_nOldButtons, FIELD_INTEGER ),
-	DEFINE_FIELD( m_flOldForwardMove, FIELD_FLOAT ),
 	DEFINE_PRED_FIELD( m_flStepSize, FIELD_FLOAT, FTYPEDESC_INSENDTABLE ),
 	DEFINE_FIELD( m_flFOVRate, FIELD_FLOAT ),
 
@@ -369,7 +367,7 @@ BEGIN_PREDICTION_DATA( C_BasePlayer )
 
 	DEFINE_PRED_FIELD( m_hVehicle, FIELD_EHANDLE, FTYPEDESC_INSENDTABLE ),
 	DEFINE_PRED_FIELD_TOL( m_flMaxspeed, FIELD_FLOAT, FTYPEDESC_INSENDTABLE, 0.5f ),
-	DEFINE_PRED_FIELD( m_iHealth, FIELD_INTEGER, FTYPEDESC_INSENDTABLE | FTYPEDESC_ONLY_ERROR_IF_ABOVE_ZERO_TO_ZERO_OR_BELOW_ETC ),
+	DEFINE_PRED_FIELD( m_iHealth, FIELD_INTEGER, FTYPEDESC_INSENDTABLE ),
 	DEFINE_PRED_FIELD( m_iBonusProgress, FIELD_INTEGER, FTYPEDESC_INSENDTABLE ),
 	DEFINE_PRED_FIELD( m_iBonusChallenge, FIELD_INTEGER, FTYPEDESC_INSENDTABLE ),
 	DEFINE_PRED_FIELD( m_fOnTarget, FIELD_BOOLEAN, FTYPEDESC_INSENDTABLE ),
@@ -418,9 +416,6 @@ LINK_ENTITY_TO_CLASS( player, C_BasePlayer );
 C_BasePlayer::C_BasePlayer() : m_iv_vecViewOffset( "C_BasePlayer::m_iv_vecViewOffset" )
 {
 	AddVar( &m_vecViewOffset, &m_iv_vecViewOffset, LATCH_SIMULATION_VAR );
-
-	AddVar( &m_Local.m_vecPunchAngle, &m_Local.m_iv_vecPunchAngle, LATCH_SIMULATION_VAR );
-	AddVar( &m_Local.m_vecPunchAngleVel, &m_Local.m_iv_vecPunchAngleVel, LATCH_SIMULATION_VAR );
 	
 #ifdef _DEBUG																
 	m_vecLadderNormal.Init();
@@ -472,12 +467,6 @@ C_BasePlayer::~C_BasePlayer()
 	delete m_pFlashlight;
 }
 
-static float s_flLocalPlayerSpawnTime = -1.0f;
-
-bool ShouldHaveLocalPlayerPickupTimelineEvents()
-{
-	return gpGlobals->curtime >= s_flLocalPlayerSpawnTime + 1.0f;
-}
 
 //-----------------------------------------------------------------------------
 // Purpose: 
@@ -488,8 +477,8 @@ void C_BasePlayer::Spawn( void )
 	ClearFlags();
 	AddFlag( FL_CLIENT );
 
-	int fEffects = GetEffects() & EF_NOSHADOW;
-	SetEffects( fEffects );
+	int effects = GetEffects() & EF_NOSHADOW;
+	SetEffects( effects );
 
 	m_iFOV	= 0;	// init field of view.
 
@@ -504,9 +493,6 @@ void C_BasePlayer::Spawn( void )
 	m_bWasFreezeFraming = false;
 
 	m_bFiredWeapon = false;
-
-	if ( IsLocalPlayer() )
-		s_flLocalPlayerSpawnTime = gpGlobals->curtime;
 }
 
 //-----------------------------------------------------------------------------
@@ -541,7 +527,7 @@ bool C_BasePlayer::IsReplay() const
 CBaseEntity	*C_BasePlayer::GetObserverTarget() const	// returns players target or NULL
 {
 #ifndef _XBOX
-	if ( IsHLTV() && HLTVCamera() )
+	if ( IsHLTV() )
 	{
 		return HLTVCamera()->GetPrimaryTarget();
 	}
@@ -642,7 +628,7 @@ void C_BasePlayer::SetObserverMode ( int iNewMode )
 int C_BasePlayer::GetObserverMode() const 
 { 
 #ifndef _XBOX
-	if ( IsHLTV() && HLTVCamera() )
+	if ( IsHLTV() )
 	{
 		return HLTVCamera()->GetMode();
 	}
@@ -740,8 +726,8 @@ void C_BasePlayer::FireGameEvent( IGameEvent *event )
 {
 	if ( FStrEq( event->GetName(), "base_player_teleported" ) )
 	{
-		const int index_ = event->GetInt( "entindex" );
-		if ( index_ == entindex() && IsLocalPlayer() )
+		const int index = event->GetInt( "entindex" );
+		if ( index == entindex() && IsLocalPlayer() )
 		{
 			// In VR, we want to make sure our head and body
 			// are aligned after we teleport.
@@ -829,9 +815,6 @@ void C_BasePlayer::PostDataUpdate( DataUpdateType_t updateType )
 		{
 			Assert( s_pLocalPlayer == NULL );
 			s_pLocalPlayer = this;
-
-			if ( IsLocalPlayer() )
-				s_flLocalPlayerSpawnTime = gpGlobals->curtime;
 
 			// Reset our sound mixed in case we were in a freeze cam when we
 			// changed level, which would cause the snd_soundmixer to be left modified.
@@ -940,16 +923,6 @@ void C_BasePlayer::PostDataUpdate( DataUpdateType_t updateType )
 		{
 			CalculateVisionUsingCurrentFlags();
 			m_nLocalPlayerVisionFlags = nCurrentLocalPlayerVisionFlags;
-		}
-
-		if ( m_Local.m_bPrevForceLocalPlayerDraw != m_Local.m_bForceLocalPlayerDraw )
-		{
-#ifdef TF_CLIENT_DLL
-			CTFPlayer *pTFPlayer = ToTFPlayer( this );
-			if ( pTFPlayer )
-				pTFPlayer->FlushAllPlayerVisibilityState();
-#endif
-			m_Local.m_bPrevForceLocalPlayerDraw = m_Local.m_bForceLocalPlayerDraw;
 		}
 	}
 
@@ -1625,11 +1598,11 @@ void C_BasePlayer::CalcRoamingView(Vector& eyeOrigin, QAngle& eyeAngles, float& 
 	
 	if ( spec_track.GetInt() > 0 )
 	{
-		C_BaseEntity *pTarget =  ClientEntityList().GetBaseEntity( spec_track.GetInt() );
+		C_BaseEntity *target =  ClientEntityList().GetBaseEntity( spec_track.GetInt() );
 
-		if ( pTarget )
+		if ( target )
 		{
-			Vector v = pTarget->GetAbsOrigin(); v.z += 54;
+			Vector v = target->GetAbsOrigin(); v.z += 54;
 			QAngle a; VectorAngles( v - eyeOrigin, a );
 
 			NormalizeAngles( a );
@@ -1923,19 +1896,6 @@ void C_BasePlayer::ThirdPersonSwitch( bool bThirdperson )
 	{
 		return false;
 	}
-
-	if ( pLocalPlayer->m_Local.m_bForceLocalPlayerDraw )
-	{
-		return false;
-	}
-
-#ifdef TF_CLIENT_DLL
-	if ( TFGameRules() && TFGameRules()->IsCompetitiveMode() && TFGameRules()->PlayersAreOnMatchSummaryStage() )
-	{
-		return false;
-	}
-#endif
-
 	int ObserverMode = pLocalPlayer->GetObserverMode();
 	if ( ( ObserverMode == OBS_MODE_NONE ) || ( ObserverMode == OBS_MODE_IN_EYE ) )
 	{
@@ -2200,11 +2160,11 @@ void C_BasePlayer::Simulate()
 //		Consider using GetRenderedWeaponModel() instead - it will get the
 //		viewmodel or the active weapon as appropriate.
 //-----------------------------------------------------------------------------
-C_BaseViewModel *C_BasePlayer::GetViewModel( int index_ /*= 0*/, bool bObserverOK )
+C_BaseViewModel *C_BasePlayer::GetViewModel( int index /*= 0*/, bool bObserverOK )
 {
-	Assert( index_ >= 0 && index_ < MAX_VIEWMODELS );
+	Assert( index >= 0 && index < MAX_VIEWMODELS );
 
-	C_BaseViewModel *vm = m_hViewModel[index_];
+	C_BaseViewModel *vm = m_hViewModel[ index ];
 	
 	if ( bObserverOK && GetObserverMode() == OBS_MODE_IN_EYE )
 	{
@@ -2213,7 +2173,7 @@ C_BaseViewModel *C_BasePlayer::GetViewModel( int index_ /*= 0*/, bool bObserverO
 		// get the targets viewmodel unless the target is an observer itself
 		if ( target && target != this && !target->IsObserver() )
 		{
-			vm = target->GetViewModel( index_ );
+			vm = target->GetViewModel( index );
 		}
 	}
 
@@ -2377,12 +2337,10 @@ void C_BasePlayer::PhysicsSimulate( void )
 	}
 
 	// Run the next command
-	MoveHelper()->SetHost( this );
 	prediction->RunCommand( 
 		this, 
 		&ctx->cmd, 
 		MoveHelper() );
-	MoveHelper()->SetHost( NULL );
 #endif
 }
 
@@ -2884,7 +2842,16 @@ bool C_BasePlayer::GetSteamID( CSteamID *pID )
 	{
 		if ( pi.friendsID && steamapicontext && steamapicontext->SteamUtils() )
 		{
-			pID->InstancedSet( pi.friendsID, 1, GetUniverse(), k_EAccountTypeIndividual );
+#if 1	// new
+			static EUniverse universe = k_EUniverseInvalid;
+
+			if ( universe == k_EUniverseInvalid )
+				universe = steamapicontext->SteamUtils()->GetConnectedUniverse();
+
+			pID->InstancedSet( pi.friendsID, 1, universe, k_EAccountTypeIndividual );
+#else	// old
+			pID->InstancedSet( pi.friendsID, 1, steamapicontext->SteamUtils()->GetConnectedUniverse(), k_EAccountTypeIndividual );
+#endif
 
 			return true;
 		}
@@ -3040,8 +3007,7 @@ void CC_DumpClientSoundscapeData( const CCommand& args )
 	Msg("Client Soundscape data dump:\n");
 	Msg("   Position: %.2f %.2f %.2f\n", pPlayer->GetAbsOrigin().x, pPlayer->GetAbsOrigin().y, pPlayer->GetAbsOrigin().z );
 	Msg("   soundscape index: %d\n", pPlayer->m_Local.m_audio.soundscapeIndex.Get() );
-	Msg("   entity index: %d\n", pPlayer->m_Local.m_audio.entIndex.Get() );
-#if 0
+	Msg("   entity index: %d\n", pPlayer->m_Local.m_audio.ent.Get() ? pPlayer->m_Local.m_audio.ent->entindex() : -1 );
 	if ( pPlayer->m_Local.m_audio.ent.Get() )
 	{
 		Msg("   entity pos: %.2f %.2f %.2f\n", pPlayer->m_Local.m_audio.ent.Get()->GetAbsOrigin().x, pPlayer->m_Local.m_audio.ent.Get()->GetAbsOrigin().y, pPlayer->m_Local.m_audio.ent.Get()->GetAbsOrigin().z );
@@ -3050,7 +3016,6 @@ void CC_DumpClientSoundscapeData( const CCommand& args )
 			Msg("     ENTITY IS DORMANT\n");
 		}
 	}
-#endif
 	bool bFoundOne = false;
 	for ( int i = 0; i < NUM_AUDIO_LOCAL_SOUNDS; i++ )
 	{
@@ -3070,3 +3035,23 @@ void CC_DumpClientSoundscapeData( const CCommand& args )
 	Msg("End dump.\n");
 }
 static ConCommand soundscape_dumpclient("soundscape_dumpclient", CC_DumpClientSoundscapeData, "Dumps the client's soundscape data.\n", FCVAR_CHEAT);
+
+#ifdef SecobMod__USE_PLAYERCLASSES
+	float C_BasePlayer::GetJumpHeight()
+	{
+	        return m_iJumpHeight;
+	}
+#endif //SecobMod__USE_PLAYERCLASSES
+
+
+#ifdef SecobMod__ALLOW_PLAYER_MODELS_IN_VEHICLES
+	//SecobMod__Information: Tony Sergi has said on the hl2coders list that third person models need to invalidate their bone cache, so we do that here.
+	const Vector &C_BasePlayer::GetRenderOrigin( void )
+	{
+		if (IsInAVehicle())
+		{
+		InvalidateBoneCache();
+		}
+	 return BaseClass::GetRenderOrigin();
+	}
+#endif //SecobMod__ALLOW_PLAYER_MODELS_IN_VEHICLES

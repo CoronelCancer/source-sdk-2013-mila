@@ -42,6 +42,11 @@
 #include "NavProgress.h"
 #include "commentary_modelviewer.h"
 
+#ifdef SecobMod__USE_PLAYERCLASSES
+  // Sub dialogs
+  # include "classmenu.h"
+#endif //SecobMod__USE_PLAYERCLASSES
+
 // our definition
 #include "baseviewport.h"
 #include <filesystem.h>
@@ -100,6 +105,31 @@ CON_COMMAND( hidepanel, "Hides a viewport panel <name>" )
 		
 	 gViewPortInterface->ShowPanel( args[ 1 ], false );
 }
+
+#ifdef SecobMod__USE_PLAYERCLASSES
+	 CON_COMMAND( SSPlayerClassesBGChecked, "Makes sure the player class menu isn't displayed on the background maps." )
+	{
+		if ( !gViewPortInterface )
+			return;
+	
+	 if ( !engine->IsLevelMainMenuBackground() )
+		{		
+		return;
+		}
+	 else
+		{
+		engine->ClientCmd( "ss_classes_default" );
+	    }
+	}
+	
+	 CON_COMMAND( chooseclass, "Opens a menu for class choose" )
+	 {
+	 	if ( !gViewPortInterface )
+	 		return;
+	 
+	 	gViewPortInterface->ShowPanel( "class", true );
+	 }
+#endif //SecobMod__USE_PLAYERCLASSES
 
 /* global helper functions
 
@@ -244,6 +274,9 @@ void CBaseViewport::CreateDefaultPanels( void )
 	AddNewPanel( CreatePanelByName( PANEL_NAV_PROGRESS ), "PANEL_NAV_PROGRESS" );
 #endif // !TF_CLIENT_DLL
 #endif // !_XBOX
+#ifdef SecobMod__USE_PLAYERCLASSES
+	AddNewPanel( CreatePanelByName( PANEL_CLASS ), "PANEL_CLASS" );
+#endif //SecobMod__USE_PLAYERCLASSES
 }
 
 void CBaseViewport::UpdateAllPanels( void )
@@ -259,43 +292,6 @@ void CBaseViewport::UpdateAllPanels( void )
 			p->Update();
 		}
 	}
-}
-
-// Check if we have any visible panel (that's not the MainMenuOverride or the Scoreboard)
-bool CBaseViewport::IsAnyPanelVisibleExceptScores()
-{
-	int count = m_Panels.Count();
-	for ( int i = 0; i < count; i++ )
-	{
-		IViewPortPanel *p = m_Panels[i];
-
-		if ( p->IsVisible() && Q_strcmp("MainMenuOverride", p->GetName()) && Q_strcmp("scores", p->GetName()) )
-		{
-			return true;
-		}
-	}
-
-	return false;
-}
-
-bool CBaseViewport::IsPanelVisible( const char* panel )
-{
-	int count = m_Panels.Count();
-
-	for ( int i = 0; i < count; i++ )
-	{
-		IViewPortPanel *p = m_Panels[i];
-		if ( p->IsVisible() )
-		{
-			const char* panel_name = p->GetName();
-			if ( !Q_strcmp( panel, panel_name ) )
-			{
-				return true;
-			}
-		}
-	}
-
-	return false;
 }
 
 IViewPortPanel* CBaseViewport::CreatePanelByName(const char *szPanelName)
@@ -316,6 +312,12 @@ IViewPortPanel* CBaseViewport::CreatePanelByName(const char *szPanelName)
 		newpanel = new CMapOverview( this );
 	}
 	*/
+#ifdef SecobMod__USE_PLAYERCLASSES
+	else if ( Q_strcmp(PANEL_CLASS, szPanelName) == 0 )
+	{
+		newpanel = new CClassMenu( this );
+	}
+#endif //SecobMod__USE_PLAYERCLASSES
 	else if ( Q_strcmp(PANEL_TEAM, szPanelName) == 0 )
 	{
 		newpanel = new CTeamMenu( this );
@@ -521,9 +523,6 @@ void CBaseViewport::RemoveAllPanels( void)
 CBaseViewport::~CBaseViewport()
 {
 	m_bInitialized = false;
-
-	if ( gViewPortInterface == this )
-		gViewPortInterface = NULL;
 
 #ifndef _XBOX
 	if ( !m_bHasParent && m_pBackGround )
@@ -755,7 +754,7 @@ void CBaseViewport::ReloadScheme(const char *fromFile)
 
 int CBaseViewport::GetDeathMessageStartHeight( void )
 {
-	return YRES(16);
+	return YRES(2);
 }
 
 void CBaseViewport::Paint()

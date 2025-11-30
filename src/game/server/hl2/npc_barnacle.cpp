@@ -28,7 +28,8 @@
 #include "npc_BaseZombie.h"
 #include "modelentities.h"
 
-#if HL2_EPISODIC
+//SecobMod
+#ifdef HL2_EPISODIC
 #include "npc_antlion.h"
 #endif
 
@@ -263,7 +264,8 @@ void CNPC_Barnacle::Spawn()
 	SetSolid( SOLID_BBOX );
 	AddSolidFlags( FSOLID_NOT_STANDABLE );
 	CollisionProp()->SetSurroundingBoundsType( USE_GAME_CODE );
-#if HL2_EPISODIC // the episodic barnacle is solid, so it can be sawbladed.
+//SecobMod
+#ifdef HL2_EPISODIC // the episodic barnacle is solid, so it can be sawbladed.
 	SetMoveType( MOVETYPE_PUSH );
 #else
 	SetMoveType( MOVETYPE_NONE );
@@ -280,7 +282,8 @@ void CNPC_Barnacle::Spawn()
 	m_takedamage		= DAMAGE_YES;
 	m_pConstraint		= NULL;
 	m_nShakeCount = 0;
-#if HL2_EPISODIC // the episodic barnacle is solid, so it can be sawbladed.
+//SecobMod
+#ifdef HL2_EPISODIC // the episodic barnacle is solid, so it can be sawbladed.
 	IPhysicsObject *pPhys = VPhysicsInitShadow( false, false );
 	if (pPhys)
 	{
@@ -488,7 +491,8 @@ void CNPC_Barnacle::BarnacleThink ( void )
 			else
 			{
 				// Finished digesting
-#if HL2_EPISODIC
+//SecobMod
+#ifdef HL2_EPISODIC
 				// have to save this off because LostPrey() resets it (and if we take damage before hitting that,
 				// then the dead thing will go flying)
 				bool poisoned = m_bSwallowingPoison;
@@ -533,7 +537,8 @@ void CNPC_Barnacle::BarnacleThink ( void )
 			else
 			{
 				// Finished digesting
-#if HL2_EPISODIC
+//SecobMod
+#ifdef HL2_EPISODIC
 				// have to save this off because LostPrey() resets it (and if we take damage before hitting that,
 				// then the dead thing will go flying)
 				bool poisoned = m_bSwallowingPoison;
@@ -963,8 +968,39 @@ void CNPC_Barnacle::UpdatePlayerConstraint( void )
 	m_bPlayerWasStanding = bStanding;
 }
 
+#ifdef SecobMod__BARNACLES_CAN_SWALLOW_PLAYERS
 //-----------------------------------------------------------------------------
 // Purpose: Lift the prey stuck to our tongue up towards our mouth
+//-----------------------------------------------------------------------------
+void CNPC_Barnacle::LiftPlayer( float flPBiteZOffset )
+{
+	// Add an additional height for the player to avoid view clipping
+	flPBiteZOffset += 25.0;
+
+	// Play a scream when we're almost within bite range
+	PlayLiftingScream( flPBiteZOffset );
+
+	// Update player constraint.
+	UpdatePlayerConstraint();
+
+	// Figure out when the prey has reached our bite range use eye position to avoid
+	// clipping into the barnacle body
+	if ( GetAbsOrigin().z - GetEnemy()->EyePosition().z < flPBiteZOffset)
+	{
+		m_bLiftingPrey = false;
+	
+		// Start the bite animation. The anim event in it will finish the job.
+		SetActivity( (Activity)ACT_BARNACLE_BITE_HUMAN );
+	}
+	else
+	{
+		PullEnemyTorwardsMouth( true );
+	}
+}
+#else
+//-----------------------------------------------------------------------------
+// Purpose: Lift the prey stuck to our tongue up towards our mouth
+
 //-----------------------------------------------------------------------------
 void CNPC_Barnacle::LiftPlayer( float flBiteZOffset )
 {
@@ -991,6 +1027,7 @@ void CNPC_Barnacle::LiftPlayer( float flBiteZOffset )
 		PullEnemyTorwardsMouth( true );
 	}
 }
+#endif //SecobMod__BARNACLES_CAN_SWALLOW_PLAYERS
 
 
 //-----------------------------------------------------------------------------
@@ -1218,7 +1255,11 @@ void CNPC_Barnacle::LiftPrey( void )
 	}
 
 	// Height from the barnacle's origin to the point at which it bites
-	float flBiteZOffset = 60.0;
+	#ifdef SecobMod__BARNACLES_CAN_SWALLOW_PLAYERS
+		float flBiteZOffset = 10.0;
+	#else
+		float flBiteZOffset = 60.0;
+    #endif //SecobMod__BARNACLES_CAN_SWALLOW_PLAYERS
 
 	if ( IsEnemyAPlayer() )
 	{
@@ -1327,7 +1368,8 @@ CRagdollProp *CNPC_Barnacle::AttachRagdollToTongue( CBaseAnimating *pAnimating )
 	CRagdollProp *pRagdoll = CreateServerRagdollAttached( pAnimating, vec3_origin, -1, COLLISION_GROUP_NONE, pTonguePhysObject, m_hTongueTip, 0, vecBonePos, m_iGrabbedBoneIndex, vec3_origin );
 	if ( pRagdoll )
 	{
-#if HL2_EPISODIC
+//SecobMod
+#ifdef HL2_EPISODIC
 		PhysEnableEntityCollisions( this, pAnimating );
 		PhysDisableEntityCollisions( this, pRagdoll );
 #endif
@@ -1354,8 +1396,8 @@ void CNPC_Barnacle::InputDropTongue( inputdata_t &inputdata )
 //-----------------------------------------------------------------------------
 void CNPC_Barnacle::AttachTongueToTarget( CBaseEntity *pTouchEnt, Vector vecGrabPos )
 {
-
-#if HL2_EPISODIC
+//SecobMod
+#ifdef HL2_EPISODIC
 	m_OnGrab.Set( pTouchEnt, this, this );
 #endif
 
@@ -1400,7 +1442,8 @@ void CNPC_Barnacle::AttachTongueToTarget( CBaseEntity *pTouchEnt, Vector vecGrab
 	}
 
 	SetEnemy( pTouchEnt );
-#if HL2_EPISODIC
+//SecobMod
+#ifdef HL2_EPISODIC
 	// Disable collision between myself and the obejct I've seized.
 	PhysDisableEntityCollisions( this, pTouchEnt );
 #endif
@@ -1629,7 +1672,16 @@ void CNPC_Barnacle::BitePrey( void )
 	}
 	else
 	{
-		nDamage = BARNACLE_BITE_DAMAGE_TO_PLAYER; 
+		#ifdef SecobMod__BARNACLES_CAN_SWALLOW_PLAYERS
+			EmitSound( "NPC_Barnacle.Digest" );
+			pVictim->AddEffects( EF_NODRAW );
+			iDamageType |= DMG_LASTGENERICFLAG;
+			nDamage = 5000; //SecobMod__Information: Make barnacles really deadly!//pVictim->m_iHealth; 
+			EmitSound( "NPC_Barnacle.Digest" );
+			SpawnDeathGibs();
+		#else	
+			nDamage = BARNACLE_BITE_DAMAGE_TO_PLAYER; 
+		#endif //SecobMod__BARNACLES_CAN_SWALLOW_PLAYERS	
 	}
 
 	if ( m_hRagdoll )
@@ -1639,8 +1691,8 @@ void CNPC_Barnacle::BitePrey( void )
 		m_hRagdoll->SetDamageEntity( NULL );
 	}
 
-	
-#if HL2_EPISODIC
+//SecobMod	
+#ifdef HL2_EPISODIC
 	m_bSwallowingPoison = IsPoisonous(pVictim);
 	unsigned int enemyClass = GetEnemy()->Classify();
 #endif
@@ -1808,7 +1860,8 @@ void CNPC_Barnacle::SwallowPrey( void )
 		m_bSwallowingPrey = false;
 		m_hTongueTip->SetAbsVelocity( vec3_origin );
 
-#if HL2_EPISODIC
+//SecobMod
+#ifdef HL2_EPISODIC
 		// digest poisonous things for just a moment before being killed by them (it looks wierd if it's instant)
 		// Parentheses were probably intended around the ?: part of the expression, but putting them there now
 		// would change the behavior which is undesirable, so parentheses were placed around the '+' to suppress
@@ -1872,8 +1925,8 @@ void CNPC_Barnacle::RemoveRagdoll( bool bDestroyRagdoll )
 //-----------------------------------------------------------------------------
 void CNPC_Barnacle::LostPrey( bool bRemoveRagdoll )
 {
-	
-#if HL2_EPISODIC
+//SecobMod	
+#ifdef HL2_EPISODIC
 	m_OnRelease.Set( GetEnemy(), this, this );
 #endif
 
@@ -1881,7 +1934,8 @@ void CNPC_Barnacle::LostPrey( bool bRemoveRagdoll )
 
  	if ( pEnemy )
 	{
-#if HL2_EPISODIC
+//SecobMod
+#ifdef HL2_EPISODIC
 		PhysEnableEntityCollisions( this, pEnemy );
 #endif
 
@@ -1917,7 +1971,8 @@ void CNPC_Barnacle::LostPrey( bool bRemoveRagdoll )
 	RemoveRagdoll( bRemoveRagdoll );
 	m_bLiftingPrey = false;
 	m_bSwallowingPrey = false;
-#if HL2_EPISODIC
+//SecobMod
+#ifdef HL2_EPISODIC
 	m_bSwallowingPoison = false;
 #endif
 	SetEnemy( NULL );
@@ -2195,7 +2250,8 @@ void CNPC_Barnacle::WaitTillDead ( void )
 	}
 }
 
-#if HL2_EPISODIC
+//SecobMod
+#ifdef HL2_EPISODIC
 //=========================================================
 // Some creatures are poisonous to barnacles, and the barnacle
 // will die after consuming them. This determines if a given 

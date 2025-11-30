@@ -44,9 +44,6 @@ extern ConVar cam_idealyaw;
 // For showing/hiding the scoreboard
 #include <game/client/iviewport.h>
 
-// Need this for steam controller
-#include "clientsteamcontext.h"
-
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
@@ -73,10 +70,17 @@ ConVar cl_upspeed( "cl_upspeed", "320", FCVAR_ARCHIVE|FCVAR_CHEAT );
 ConVar cl_forwardspeed( "cl_forwardspeed", "400", FCVAR_ARCHIVE|FCVAR_CHEAT );
 ConVar cl_backspeed( "cl_backspeed", "400", FCVAR_ARCHIVE|FCVAR_CHEAT );
 #else
-ConVar cl_sidespeed( "cl_sidespeed", "450", FCVAR_REPLICATED | FCVAR_CHEAT );
-ConVar cl_upspeed( "cl_upspeed", "320", FCVAR_REPLICATED | FCVAR_CHEAT );
-ConVar cl_forwardspeed( "cl_forwardspeed", "450", FCVAR_REPLICATED | FCVAR_CHEAT );
-ConVar cl_backspeed( "cl_backspeed", "450", FCVAR_REPLICATED | FCVAR_CHEAT );
+	#ifdef SecobMod__USE_PLAYERCLASSES
+		ConVar cl_sidespeed( "cl_sidespeed", "4500", FCVAR_CHEAT ); //SecobMod__Information: Here we set the maximum side speed a player can achieve. Default is 450.
+		ConVar cl_upspeed( "cl_upspeed", "4500", FCVAR_CHEAT ); //SecobMod__Information: Here we set the maximum up speed a player can achieve. Default is 320.
+		ConVar cl_forwardspeed( "cl_forwardspeed", "4500", FCVAR_CHEAT ); //SecobMod__Information: Here we set the maximum forward speed a player can achieve. Default is 450.
+		ConVar cl_backspeed( "cl_backspeed", "4500", FCVAR_CHEAT ); //SecobMod__Information: Here we set the maximum back speed a player can achieve. Default is 450.
+	#else
+		ConVar cl_sidespeed( "cl_sidespeed", "450", FCVAR_CHEAT );
+		ConVar cl_upspeed( "cl_upspeed", "320", FCVAR_CHEAT );
+		ConVar cl_forwardspeed( "cl_forwardspeed", "450", FCVAR_CHEAT );
+		ConVar cl_backspeed( "cl_backspeed", "450", FCVAR_CHEAT );
+	#endif //SecobMod__USE_PLAYERCLASSES
 #endif // CSTRIKE_DLL
 ConVar lookspring( "lookspring", "0", FCVAR_ARCHIVE );
 ConVar lookstrafe( "lookstrafe", "0", FCVAR_ARCHIVE );
@@ -314,8 +318,6 @@ CInput::CInput( void )
 	m_pCommands = NULL;
 	m_pCameraThirdData = NULL;
 	m_pVerifiedCommands = NULL;
-	m_PreferredGameActionSet = GAME_ACTION_SET_MENUCONTROLS;
-	m_bSteamControllerGameActionsInitialized = false;
 }
 
 //-----------------------------------------------------------------------------
@@ -950,8 +952,7 @@ void CInput::ControllerMove( float frametime, CUserCmd *cmd )
 		}
 	}
 
-	SteamControllerMove( frametime, cmd );
-	JoyStickMove( frametime, cmd );
+	JoyStickMove( frametime, cmd);
 
 	// NVNT if we have a haptic device..
 	if(haptics && haptics->HasDevice())
@@ -1107,6 +1108,10 @@ void CInput::ExtraMouseSample( float frametime, bool active )
 	}
 
 }
+
+#ifdef SecobMod__MULTIPLAYER_CHAT_BUBBLES
+extern int g_iChatBubble;
+#endif //SecobMod__MULTIPLAYER_CHAT_BUBBLES
 
 void CInput::CreateMove ( int sequence_number, float input_sample_frametime, bool active )
 {	
@@ -1285,6 +1290,10 @@ void CInput::CreateMove ( int sequence_number, float input_sample_frametime, boo
 	}
 	m_EntityGroundContact.RemoveAll();
 #endif
+
+	#ifdef SecobMod__MULTIPLAYER_CHAT_BUBBLES
+		cmd->chatbubble = g_iChatBubble;
+	#endif //SecobMod__MULTIPLAYER_CHAT_BUBBLES
 
 	pVerified->m_cmd = *cmd;
 	pVerified->m_crc = cmd->GetChecksum();
@@ -1668,9 +1677,6 @@ void CInput::Init_All (void)
 	m_fHadJoysticks = false;
 	m_flLastForwardMove = 0.0;
 
-	// Make sure this is activated now so steam controller stuff works
-	ClientSteamContext().Activate();
-
 	// Initialize inputs
 	if ( IsPC() )
 	{
@@ -1680,9 +1686,6 @@ void CInput::Init_All (void)
 		
 	// Initialize third person camera controls.
 	Init_Camera();
-
-	// Initialize steam controller action sets
-	m_bSteamControllerGameActionsInitialized = InitializeSteamControllerGameActionSets();
 }
 
 /*

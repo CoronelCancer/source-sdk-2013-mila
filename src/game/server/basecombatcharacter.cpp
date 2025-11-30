@@ -39,10 +39,6 @@
 #include "saverestoretypes.h"
 #include "nav_mesh.h"
 
-#ifdef TF_DLL
-#include "nav_mesh/tf_nav_area.h"
-#endif
-
 #ifdef NEXT_BOT
 #include "NextBot/NextBotManager.h"
 #endif
@@ -51,6 +47,9 @@
 #include "weapon_physcannon.h"
 #include "hl2_gamerules.h"
 #endif
+
+//SecobMod.
+#include "hl2mp_gamerules.h"
 
 #ifdef PORTAL
 	#include "portal_util_shared.h"
@@ -1535,7 +1534,8 @@ bool CBaseCombatCharacter::BecomeRagdoll( const CTakeDamageInfo &info, const Vec
 
 #ifdef HL2_EPISODIC
 	// Burning corpses are server-side in episodic, if we're in darkness mode
-	if ( IsOnFire() && HL2GameRules()->IsAlyxInDarknessMode() )
+	//SecobMod.
+	if (IsOnFire() && HL2MPRules()->IsAlyxInDarknessMode())
 	{
 		CBaseEntity *pRagdoll = CreateServerRagdoll( this, m_nForceBone, newinfo, COLLISION_GROUP_DEBRIS );
 		FixupBurningServerRagdoll( pRagdoll );
@@ -1547,9 +1547,10 @@ bool CBaseCombatCharacter::BecomeRagdoll( const CTakeDamageInfo &info, const Vec
 #ifdef HL2_DLL	
 
 	bool bMegaPhyscannonActive = false;
-#if !defined( HL2MP )
-	bMegaPhyscannonActive = HL2GameRules()->MegaPhyscannonActive();
-#endif // !HL2MP
+//SecobMod.
+//#if !defined( HL2MP )
+	bMegaPhyscannonActive = HL2MPRules()->MegaPhyscannonActive();
+//#endif // !HL2MP
 
 	// Mega physgun requires everything to be a server-side ragdoll
 	if ( m_bForceServerRagdoll == true || ( ( bMegaPhyscannonActive == true ) && !IsPlayer() && Classify() != CLASS_PLAYER_ALLY_VITAL && Classify() != CLASS_PLAYER_ALLY ) )
@@ -2168,20 +2169,7 @@ void CBaseCombatCharacter::Weapon_Equip( CBaseCombatWeapon *pWeapon )
 
 	// Pass the lighting origin over to the weapon if we have one
 	pWeapon->SetLightingOriginRelative( GetLightingOriginRelative() );
-
-	if ( IsPlayer() )
-	{
-		IGameEvent *event = gameeventmanager->CreateEvent( "weapon_equipped" );
-		if ( event )
-		{
-			event->SetString( "class", pWeapon->GetClassname() );
-			event->SetInt( "entindex", pWeapon->entindex() );
-			event->SetInt( "owner_entindex", entindex() );
-			gameeventmanager->FireEvent( event );
-		}
-	}
 }
-
 
 //-----------------------------------------------------------------------------
 // Purpose:	Leaves weapon, giving only ammo to the character
@@ -3009,18 +2997,6 @@ int CBaseCombatCharacter::GiveAmmo( int iCount, int iAmmoIndex, bool bSuppressSo
 
 	m_iAmmo.Set( iAmmoIndex, m_iAmmo[iAmmoIndex] + iAdd );
 
-	if ( IsPlayer() )
-	{
-		IGameEvent *event = gameeventmanager->CreateEvent( "ammo_pickup" );
-		if ( event )
-		{
-			event->SetInt( "ammo_index", iAmmoIndex );
-			event->SetInt( "amount", iAdd );
-			event->SetInt( "total", m_iAmmo[ iAmmoIndex ] );
-			gameeventmanager->FireEvent( event );
-		}
-	}
-
 	return iAdd;
 }
 
@@ -3131,12 +3107,13 @@ void CBaseCombatCharacter::VPhysicsShadowCollision( int index, gamevcollisioneve
 	// which can occur owing to ordering issues it appears.
 	float flOtherAttackerTime = 0.0f;
 
-#if defined( HL2_DLL ) && !defined( HL2MP )
-	if ( HL2GameRules()->MegaPhyscannonActive() == true )
+//SecobMod.
+//#if defined( HL2_DLL ) && !defined( HL2MP )
+	if ( HL2MPRules()->MegaPhyscannonActive() == true )
 	{
 		flOtherAttackerTime = 1.0f;
 	}
-#endif // HL2_DLL && !HL2MP
+//#endif // HL2_DLL && !HL2MP
 
 	if ( this == pOther->HasPhysicsAttacker( flOtherAttackerTime ) )
 		return;
@@ -3619,16 +3596,3 @@ float CBaseCombatCharacter::GetTimeSinceLastInjury( int team /*= TEAM_ANY */ ) c
 	return never;
 }
 
-//-----------------------------------------------------------------------------
-HSCRIPT CBaseCombatCharacter::ScriptGetLastKnownArea( void ) const 
-{ 
-#ifdef TF_DLL
-	return ToHScript( GetLastKnownArea() ); 
-#else
-	return NULL;
-#endif
-}	
-
-BEGIN_ENT_SCRIPTDESC( CBaseCombatCharacter, CBaseFlex, "Base combat characters." )
-	DEFINE_SCRIPTFUNC_NAMED( ScriptGetLastKnownArea, "GetLastKnownArea", "Return the last nav area occupied - NULL if unknown" )
-END_SCRIPTDESC();

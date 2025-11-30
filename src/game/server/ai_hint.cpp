@@ -729,7 +729,7 @@ CAI_Hint *CAI_HintManager::GetFirstHint( AIHintIter_t *pIter )
 { 
 	if ( !gm_AllHints.Count() )
 	{
-		*pIter = (AIHintIter_t)(intp)gm_AllHints.InvalidIndex();
+		*pIter = (AIHintIter_t)gm_AllHints.InvalidIndex();
 		return NULL;
 	}
 	*pIter = (AIHintIter_t)0; 
@@ -741,14 +741,12 @@ CAI_Hint *CAI_HintManager::GetFirstHint( AIHintIter_t *pIter )
 //-----------------------------------------------------------------------------
 CAI_Hint *CAI_HintManager::GetNextHint(  AIHintIter_t *pIter )
 {
-	int iterAsInt = size_cast< int >( (intp )*pIter );
-
-	if ( iterAsInt != gm_AllHints.InvalidIndex() )
+	if ( (int)*pIter != gm_AllHints.InvalidIndex() )
 	{
-		intp i = iterAsInt + 1;
+		int i = ( (int)*pIter ) + 1;
 		if ( gm_AllHints.Count() <= i )
 		{
-			*pIter = (AIHintIter_t)(intp)gm_AllHints.InvalidIndex();
+			*pIter = (AIHintIter_t)gm_AllHints.InvalidIndex();
 			return NULL;
 		}
 		*pIter = (AIHintIter_t)i; 
@@ -1345,7 +1343,14 @@ bool CAI_Hint::HintMatchesCriteria( CAI_BaseNPC *pNPC, const CHintCriteria &hint
 
 	if ( hintCriteria.HasFlag(bits_HINT_HAS_LOS_TO_PLAYER|bits_HAS_EYEPOSITION_LOS_TO_PLAYER) )
 	{
-		CBasePlayer *pPlayer = AI_GetSinglePlayer();
+		#ifdef SecobMod__Enable_Fixed_Multiplayer_AI
+			CBasePlayer *pPlayer = UTIL_GetNearestVisiblePlayer(this); 
+		
+			if ( !pPlayer ) 
+			UTIL_GetNearestPlayer(GetAbsOrigin()); 
+		#else
+			CBasePlayer *pPlayer = AI_GetSinglePlayer();
+		#endif //SecobMod__Enable_Fixed_Multiplayer_AI
 
 		if( pPlayer != NULL )
 		{

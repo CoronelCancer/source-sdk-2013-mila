@@ -4,21 +4,30 @@
 //
 //=============================================================================//
 #include "cbase.h"
+
+#ifdef SecobMod__USE_CSS_LADDERS
+#include "gamemovement.h"
+#else
 #include "hl_gamemovement.h"
 #include "in_buttons.h"
 #include "utlrbtree.h"
 #include "hl2_shareddefs.h"
-
-#ifdef HL2MP
-#ifdef CLIENT_DLL
-#include "hl2mp/c_hl2mp_player.h"
-#else
-#include "hl2mp/hl2mp_player.h"
-#endif
-#endif
+	#ifdef HL2MP
+		#include "hl2mp_gamerules.h"
+	#endif
+#endif //SecobMod__USE_CSS_LADDERS
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
+
+#ifdef SecobMod__USE_CSS_LADDERS
+// Expose our interface.
+static CGameMovement g_GameMovement;
+IGameMovement *g_pGameMovement = ( IGameMovement * )&g_GameMovement;
+
+EXPOSE_SINGLE_INTERFACE_GLOBALVAR(CGameMovement, IGameMovement,INTERFACENAME_GAMEMOVEMENT, g_GameMovement );
+
+#else
 
 static ConVar sv_autoladderdismount( "sv_autoladderdismount", "1", FCVAR_REPLICATED, "Automatically dismount from ladders when you reach the end (don't have to +USE)." );
 static ConVar sv_ladderautomountdot( "sv_ladderautomountdot", "0.4", FCVAR_REPLICATED, "When auto-mounting a ladder by looking up its axis, this is the tolerance for looking now directly along the ladder axis." );
@@ -160,6 +169,7 @@ void CHL2GameMovement::StartForcedMove( bool mounting, float transit_speed, cons
 		return;
 	}
 
+#if !defined( CLIENT_DLL )
 	if ( ladder )
 	{
 		ladder->PlayerGotOn( GetHL2Player() );
@@ -169,7 +179,6 @@ void CHL2GameMovement::StartForcedMove( bool mounting, float transit_speed, cons
 			return;
 	}
 		
-#if !defined( CLIENT_DLL )
 	// Reserve goal slot here
 	bool valid = false;
 	lm->m_hReservedSpot = CReservePlayerSpot::ReserveSpot( 
@@ -506,7 +515,7 @@ bool CHL2GameMovement::ExitLadderViaDismountNode( CFuncLadder *ladder, bool stri
 			return false;
 		}
 
-		StartForcedMove( false, this->MaxSpeed(), bestDest, NULL );
+		StartForcedMove( false, player->MaxSpeed(), bestDest, NULL );
 		return true;
 	}
 
@@ -516,47 +525,12 @@ bool CHL2GameMovement::ExitLadderViaDismountNode( CFuncLadder *ladder, bool stri
 		// alternate dismount if there is one.
 		if( foundAlternate && alternateDist <= 60.0f )
 		{
-			StartForcedMove( false, this->MaxSpeed(), alternateDest, NULL );
+			StartForcedMove( false, player->MaxSpeed(), alternateDest, NULL );
 			return true;
 		}
 	}
 
 	return false;
-}
-
-void CHL2GameMovement::ProcessMovement( CBasePlayer *pPlayer, CMoveData *pMove )
-{
-	BaseClass::ProcessMovement( pPlayer, pMove );
-}
-
-void CHL2GameMovement::CheckParameters( void )
-{
-#if defined( HL2_DLL ) || defined( HL2_CLIENT_DLL )
-	// Handle speed changes here so they are predicted correctly.
-#ifdef HL2MP
-	CHL2MP_Player* pHL2Player = static_cast< CHL2MP_Player* >( player );
-#else
-	CHL2_Player* pHL2Player = static_cast< CHL2_Player* >( player );
-#endif
-	pHL2Player->HandleSpeedChanges( mv );
-#endif
-
-	BaseClass::CheckParameters();
-}
-
-void CHL2GameMovement::ReduceTimers( void )
-{
-#if defined( HL2_DLL ) || defined( HL2_CLIENT_DLL )
-	// Handle speed changes here so they are predicted correctly.
-#ifdef HL2MP
-	CHL2MP_Player* pHL2Player = static_cast< CHL2MP_Player* >( player );
-#else
-	CHL2_Player* pHL2Player = static_cast< CHL2_Player* >( player );
-#endif
-	pHL2Player->ReduceTimers( mv );
-#endif
-
-	BaseClass::ReduceTimers();
 }
 
 //-----------------------------------------------------------------------------
@@ -565,6 +539,7 @@ void CHL2GameMovement::ReduceTimers( void )
 //-----------------------------------------------------------------------------
 void CHL2GameMovement::FullLadderMove()
 {
+#if !defined( CLIENT_DLL )
 	CFuncLadder *ladder = GetLadder();
 	Assert( ladder );
 	if ( !ladder )
@@ -743,6 +718,7 @@ void CHL2GameMovement::FullLadderMove()
 			mv->SetAbsOrigin( oldOrigin );
 		}
 	}
+#endif
 }
 
 bool CHL2GameMovement::CheckLadderAutoMountEndPoint( CFuncLadder *ladder, const Vector& bestOrigin )
@@ -779,7 +755,7 @@ bool CHL2GameMovement::CheckLadderAutoMountEndPoint( CFuncLadder *ladder, const 
 
 	if ( ladderAxis.Dot( m_vecForward ) > sv_ladderautomountdot.GetFloat() )
 	{
-		StartForcedMove( true, this->MaxSpeed(), bestOrigin, ladder );
+		StartForcedMove( true, player->MaxSpeed(), bestOrigin, ladder );
 		return true;
 	}
 
@@ -841,7 +817,7 @@ bool CHL2GameMovement::CheckLadderAutoMountCone( CFuncLadder *ladder, const Vect
 			( facingladderaxis || reallyclosetoladder ) && 
 			closetoladder )
 		{
-			StartForcedMove( true, this->MaxSpeed(), bestOrigin, ladder );
+			StartForcedMove( true, player->MaxSpeed(), bestOrigin, ladder );
 			return true;
 		}
 	}
@@ -907,26 +883,16 @@ bool CHL2GameMovement::LookingAtLadder( CFuncLadder *ladder )
 //-----------------------------------------------------------------------------
 bool CHL2GameMovement::CheckLadderAutoMount( CFuncLadder *ladder, const Vector& bestOrigin )
 {
+#if !defined( CLIENT_DLL )
+
 	if ( ladder != NULL )
 	{
-		StartForcedMove( true, this->MaxSpeed(), bestOrigin, ladder );
+		StartForcedMove( true, player->MaxSpeed(), bestOrigin, ladder );
 		return true;
 	}
 
+#endif
 	return false;
-}
-
-float CHL2GameMovement::MaxSpeed()
-{
-	if ( mv )
-	{
-		if ( mv->m_flClientMaxSpeed )
-			return Min( mv->m_flClientMaxSpeed, mv->m_flMaxSpeed );
-
-		return mv->m_flMaxSpeed;
-	}
-
-	return player->MaxSpeed();
 }
 
 //-----------------------------------------------------------------------------
@@ -1037,7 +1003,7 @@ bool CHL2GameMovement::LadderMove( void )
 	float forwardSpeed = 0.0f;
 	float rightSpeed = 0.0f;
 
-	float speed = this->MaxSpeed();
+	float speed = player->MaxSpeed();
 
 
 	if ( mv->m_nButtons & IN_BACK )
@@ -1201,3 +1167,4 @@ bool CHL2GameMovement::CanAccelerate()
 
 	EXPOSE_SINGLE_INTERFACE_GLOBALVAR(CGameMovement, IGameMovement,INTERFACENAME_GAMEMOVEMENT, g_GameMovement );
 #endif
+#endif //SecobMod__USE_CSS_LADDERS

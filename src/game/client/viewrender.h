@@ -301,6 +301,10 @@ class CViewRender : public IViewRender,
 public:
 	virtual void	Init( void );
 	virtual void	Shutdown( void );
+	
+	#ifdef SecobMod__FIX_VEHICLE_PLAYER_CAMERA_JUDDER
+		virtual void    MP_PostSimulate();
+	#endif //SecobMod__FIX_VEHICLE_PLAYER_CAMERA_JUDDER
 
 	const CViewSetup *GetPlayerViewSetup( ) const;
 
@@ -487,9 +491,6 @@ private:
 	CMaterialReference	m_ModulateSingleColor;
 	CMaterialReference	m_ScreenOverlayMaterial;
 	CMaterialReference m_UnderWaterOverlayMaterial;
-
-	CMaterialReference	m_ScriptOverlayMaterial;
-	char m_szCurrentScriptMaterialName[ MAX_PATH ];
 
 	Vector			m_vecLastFacing;
 	float			m_flCheapWaterStartDistance;

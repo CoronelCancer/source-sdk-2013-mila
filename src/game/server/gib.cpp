@@ -399,9 +399,12 @@ bool CGib::SUB_AllowedToFade( void )
 		if( VPhysicsGetObject()->GetGameFlags() & FVPHYSICS_PLAYER_HELD || GetEFlags() & EFL_IS_BEING_LIFTED_BY_BARNACLE )
 			return false;
 	}
-
-	CBasePlayer *pPlayer = ( AI_IsSinglePlayer() ) ? UTIL_GetLocalPlayer() : NULL;
-
+	#ifdef SecobMod__Enable_Fixed_Multiplayer_AI
+		CBasePlayer *pPlayer = UTIL_GetNearestVisiblePlayer(this); 
+	#else
+		CBasePlayer *pPlayer = ( AI_IsSinglePlayer() ) ? UTIL_GetLocalPlayer() : NULL;
+	#endif //SecobMod__Enable_Fixed_Multiplayer_AI
+	
 	if ( pPlayer && pPlayer->FInViewCone( this ) && m_bForceRemove == false )
 	{
 		return false;
@@ -591,7 +594,7 @@ void CGib::Spawn( const char *szGibModel )
 	m_nRenderMode = kRenderNormal;
 	m_nRenderFX = kRenderFxNone;
 	
-	// hopefully this will fix the VELOCITY TOO LOW stuff
+	// hopefully this will fix the VELOCITY TOO LOW crap
 	m_takedamage = DAMAGE_EVENTS_ONLY;
 	SetSolid( SOLID_BBOX );
 	AddSolidFlags( FSOLID_NOT_STANDABLE );

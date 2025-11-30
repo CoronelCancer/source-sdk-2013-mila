@@ -4,8 +4,11 @@
 //
 //=============================================================================//
 
-#include "weapon_hl2mpbase.h"
-#include "weapon_hl2mpbasehlmpcombatweapon.h"
+#ifdef SecobMod__PLAYER_MOVEMENT_CAMERA_BOB
+	#include "weapon_hl2mpbasehlmpcombatweapon.h"
+#else
+	#include "weapon_hl2mpbase.h"
+#endif //SecobMod__PLAYER_MOVEMENT_CAMERA_BOB
 
 #ifndef BASEHLCOMBATWEAPON_H
 #define BASEHLCOMBATWEAPON_H
@@ -20,10 +23,14 @@
 //=========================================================
 // Machine gun base class
 //=========================================================
-class CHL2MPMachineGun : public CBaseHL2MPCombatWeapon
+#ifdef SecobMod__PLAYER_MOVEMENT_CAMERA_BOB
+	class CHL2MPMachineGun : public CBaseHL2MPCombatWeapon
+#else
+	class CHL2MPMachineGun : public CWeaponHL2MPBase
+#endif //SecobMod__PLAYER_MOVEMENT_CAMERA_BOB
 {
 public:
-	DECLARE_CLASS( CHL2MPMachineGun, CBaseHL2MPCombatWeapon );
+	DECLARE_CLASS( CHL2MPMachineGun, CWeaponHL2MPBase );
 	DECLARE_DATADESC();
 
 	CHL2MPMachineGun();

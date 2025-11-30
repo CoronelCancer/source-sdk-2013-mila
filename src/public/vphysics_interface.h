@@ -854,7 +854,6 @@ public:
 	// dumps info about the object to Msg()
 	virtual void			OutputDebugInfo() const = 0;
 
-	virtual float			GetBuoyancyRatio( void ) const = 0;
 };
 
 
@@ -1022,7 +1021,7 @@ struct fluidparams_t
 	bool		useAerodynamics;// true if this controller should calculate surface pressure
 	int			contents;
 
-	fluidparams_t() = default;
+	fluidparams_t() {}
 	fluidparams_t( fluidparams_t const& src )
 	{
 		Vector4DCopy( src.surfacePlane, surfacePlane );
@@ -1031,8 +1030,6 @@ struct fluidparams_t
 		torqueFactor = src.torqueFactor;
 		viscosityFactor = src.viscosityFactor;
 		contents = src.contents;
-		useAerodynamics = src.useAerodynamics;
-		pGameData = nullptr;
 	}
 };
 

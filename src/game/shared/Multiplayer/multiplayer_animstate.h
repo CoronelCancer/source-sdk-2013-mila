@@ -66,9 +66,7 @@ enum PlayerAnimEvent_t
 	PLAYERANIMEVENT_PASSTIME_THROW_BEGIN,
 	PLAYERANIMEVENT_PASSTIME_THROW_MIDDLE,
 	PLAYERANIMEVENT_PASSTIME_THROW_END,
-	PLAYERANIMEVENT_CYOAPDA_BEGIN,
-	PLAYERANIMEVENT_CYOAPDA_MIDDLE,
-	PLAYERANIMEVENT_CYOAPDA_END,
+	PLAYERANIMEVENT_PASSTIME_THROW_CANCEL,
 
 	PLAYERANIMEVENT_ATTACK_PRIMARY_SUPER,
 
@@ -230,6 +228,11 @@ protected:
 	virtual bool HandleJumping( Activity &idealActivity );
 	virtual bool HandleDucking( Activity &idealActivity );
 	virtual bool HandleMoving( Activity &idealActivity );
+	
+	#ifdef SecobMod__ALLOW_PLAYER_MODELS_IN_VEHICLES
+		virtual bool HandleVehicle( Activity &idealActivity );
+	#endif //SecobMod__ALLOW_PLAYER_MODELS_IN_VEHICLES
+	
 	virtual bool HandleSwimming( Activity &idealActivity );
 	virtual bool HandleDying( Activity &idealActivity );
 

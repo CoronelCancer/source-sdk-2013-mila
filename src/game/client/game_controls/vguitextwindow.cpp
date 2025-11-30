@@ -109,8 +109,6 @@ CTextWindow::CTextWindow(IViewPort *pViewPort) : Frame(NULL, PANEL_INFO	)
 	m_pOK->SetCommand("okay");
 	m_pTextMessage->SetMultiline( true );
 	m_nContentType = TYPE_TEXT;
-
-	Reset();
 }
 
 //-----------------------------------------------------------------------------
@@ -122,7 +120,7 @@ void CTextWindow::ApplySchemeSettings( IScheme *pScheme )
 
 	LoadControlSettings("Resource/UI/TextWindow.res");
 
-	Update();
+	Reset();
 }
 
 //-----------------------------------------------------------------------------
@@ -136,13 +134,14 @@ CTextWindow::~CTextWindow()
 
 void CTextWindow::Reset( void )
 {
+#ifndef SecobMod__BG_FIX
 	//=============================================================================
 	// HPE_BEGIN:
 	// [Forrest] Replace strange hard-coded default message with hard-coded error message.
 	//=============================================================================
-	V_strcpy_safe( m_szTitle, "Error loading info message." );
-	V_strcpy_safe( m_szMessage, "" );
-	V_strcpy_safe( m_szMessageFallback, "" );
+	Q_strcpy( m_szTitle, "Error loading info message." );
+	Q_strcpy( m_szMessage, "" );
+	Q_strcpy( m_szMessageFallback, "" );
 	//=============================================================================
 	// HPE_END
 	//=============================================================================
@@ -152,6 +151,7 @@ void CTextWindow::Reset( void )
 	m_bShownURL = false;
 	m_bUnloadOnDismissal = false;
 	Update();
+#endif //SecobMod__BG_FIX
 }
 
 void CTextWindow::ShowText( const char *text )
@@ -376,7 +376,7 @@ void CTextWindow::OnCommand( const char *command )
 
 void CTextWindow::OnKeyCodePressed( vgui::KeyCode code )
 {
-	if ( code == KEY_XBUTTON_A || code == KEY_XBUTTON_B || code == STEAMCONTROLLER_A || code == STEAMCONTROLLER_B )
+	if ( code == KEY_XBUTTON_A || code == KEY_XBUTTON_B )
 	{
 		OnCommand( "okay" );
 		return;

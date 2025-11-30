@@ -87,7 +87,6 @@ class CFuncLadder;
 class CNavArea;
 class CHintSystem;
 class CAI_Expresser;
-class CVoteController;
 
 #if defined USES_ECON_ITEMS
 class CEconWearable;
@@ -246,8 +245,6 @@ protected:
 public:
 	DECLARE_DATADESC();
 	DECLARE_SERVERCLASS();
-	// script description
-	DECLARE_ENT_SCRIPTDESC();
 	
 	CBasePlayer();
 	~CBasePlayer();
@@ -255,6 +252,35 @@ public:
 	// IPlayerInfo passthrough (because we can't do multiple inheritance)
 	IPlayerInfo *GetPlayerInfo() { return &m_PlayerInfo; }
 	IBotController *GetBotController() { return &m_PlayerInfo; }
+	
+	#ifdef SecobMod__USE_PLAYERCLASSES
+	 // Here are the players speed is set:
+	void SetWalkSpeed(int WalkSpeed);
+	void SetNormSpeed(int NormSpeed);
+	void SetSprintSpeed(int SprintSpeed);
+	void SetJumpHeight(float JumpHeight);
+	
+	// Spielergeschwindigkeit:
+	int m_iWalkSpeed;
+	int m_iNormSpeed;
+	int m_iSprintSpeed;
+	
+	CNetworkVar( float, m_iJumpHeight );
+	
+	int GetWalkSpeed();
+	int GetNormSpeed();
+	int GetSprintSpeed();
+	float GetJumpHeight();
+	#endif //SecobMod__USE_PLAYERCLASSES
+
+	#ifdef SecobMod__ENABLE_FAKE_PASSENGER_SEATS
+	void SafeVehicleExit(CBasePlayer *pPlayer);
+	#endif //SecobMod__ENABLE_FAKE_PASSENGER_SEATS
+
+	#ifdef SecobMod__MULTIPLAYER_LEVEL_TRANSITIONS
+		bool m_bTransition; //SecobMod__Information:  This is important as it allows the game to save each players progress over a map change. Create the booleans required for transitions to work.
+		bool m_bTransitionTeleported; //SecobMod__Information:  This is important as it allows the game to save each players progress over a map change.  Create the booleans required for transitions to work.
+	#endif //SecobMod__MULTIPLAYER_LEVEL_TRANSITIONS
 
 	virtual void			SetModel( const char *szModelName );
 	void					SetBodyPitch( float flPitch );
@@ -285,7 +311,11 @@ public:
 	// Returns true if this player wants pPlayer to be moved back in time when this player runs usercmds.
 	// Saves a lot of overhead on the server if we can cull out entities that don't need to lag compensate
 	// (like team members, entities out of our PVS, etc).
+#ifdef SecobMod__Enable_Fixed_Multiplayer_AI
+	virtual bool			WantsLagCompensationOnEntity( const CBaseEntity	*pEntity, const CUserCmd *pCmd, const CBitVec<MAX_EDICTS> *pEntityTransmitBits ) const;
+#else
 	virtual bool			WantsLagCompensationOnEntity( const CBasePlayer	*pPlayer, const CUserCmd *pCmd, const CBitVec<MAX_EDICTS> *pEntityTransmitBits ) const;
+#endif //SecobMod__Enable_Fixed_Multiplayer_AI
 
 	virtual void			Spawn( void );
 	virtual void			Activate( void );
@@ -304,6 +334,13 @@ public:
 	const char				*GetTracerType( void );
 	void					MakeTracer( const Vector &vecTracerSrc, const trace_t &tr, int iTracerType );
 	void					DoImpactEffect( trace_t &tr, int nDamageType );
+	
+	#ifdef SecobMod__MULTIPLAYER_CHAT_BUBBLES
+		void MakeChatBubble(int chatbubble);
+		void KillChatBubble();
+		void CheckChatBubble( CUserCmd *cmd );
+		EHANDLE m_hChatBubble;
+	#endif //SecobMod__MULTIPLAYER_CHAT_BUBBLES		
 
 #if !defined( NO_ENTITY_PREDICTION )
 	void					AddToPlayerSimulationList( CBaseEntity *other );
@@ -317,9 +354,6 @@ public:
 
 	// Forces processing of usercmds (e.g., even if game is paused, etc.)
 	void					ForceSimulation();
-
-	// Process new user settings from the engine
-	void					ClientSettingsChanged();
 
 	virtual unsigned int	PhysicsSolidMaskForEntity( void ) const;
 
@@ -377,7 +411,7 @@ public:
 	const char *			GetPlayerName() { return m_szNetname; }
 	void					SetPlayerName( const char *name );
 
-	int						GetUserID() const { return engine->GetPlayerUserId( edict() ); }
+	int						GetUserID() { return engine->GetPlayerUserId( edict() ); }
 	const char *			GetNetworkIDString(); 
 	virtual const Vector	GetPlayerMins( void ) const; // uses local player
 	virtual const Vector	GetPlayerMaxs( void ) const; // uses local player
@@ -388,16 +422,6 @@ public:
 	void					ViewPunchReset( float tolerance = 0 );
 	void					ShowViewModel( bool bShow );
 	void					ShowCrosshair( bool bShow );
-
-	bool					ScriptIsPlayerNoclipping( void );
-	void					SetForceLocalDraw( bool bForceLocalDraw )
-	{
-		m_Local.m_bForceLocalPlayerDraw = bForceLocalDraw;
-	}
-	bool					GetForceLocalDraw( void )
-	{
-		return m_Local.m_bForceLocalPlayerDraw;
-	}
 
 	// View model prediction setup
 	void					CalcView( Vector &eyeOrigin, QAngle &eyeAngles, float &zNear, float &zFar, float &fov );
@@ -480,8 +504,6 @@ public:
 	bool					IsSinglePlayerGameEnding() { return m_bSinglePlayerGameEnding == true; }
 
 	bool					HandleVoteCommands( const CCommand &args );
-
-	virtual CVoteController *GetTeamVoteController();
 	
 	// Observer functions
 	virtual bool			StartObserverMode(int mode); // true, if successful
@@ -491,7 +513,7 @@ public:
 	virtual int				GetObserverMode( void ); // returns observer mode or OBS_NONE
 	virtual bool			SetObserverTarget(CBaseEntity * target);
 	virtual void			ObserverUse( bool bIsPressed ); // observer pressed use
-	virtual CBaseEntity		*GetObserverTarget( void ); // returns players target or NULL
+	virtual CBaseEntity		*GetObserverTarget( void ); // returns players targer or NULL
 	virtual CBaseEntity		*FindNextObserverTarget( bool bReverse ); // returns next/prev player to follow or NULL
 	virtual int				GetNextObserverSearchStartPoint( bool bReverse ); // Where we should start looping the player list in a FindNextObserverTarget call
 	virtual bool			IsValidObserverTarget(CBaseEntity * target); // true, if player is allowed to see this target
@@ -569,6 +591,9 @@ public:
 	virtual void			ForceDropOfCarriedPhysObjects( CBaseEntity *pOnlyIfHoldindThis = NULL ) {}
 	virtual float			GetHeldObjectMass( IPhysicsObject *pHeldObject );
 
+	//SecobMod__MiscFixes
+	virtual CBaseEntity		*GetHeldObject( void );
+
 	void					CheckSuitUpdate();
 	void					SetSuitUpdate(const char *name, int fgroup, int iNoRepeat);
 	virtual void			UpdateGeigerCounter( void );
@@ -606,8 +631,8 @@ public:
 	float					GetTimeSinceLastUserCommand( void ) { return ( !IsConnected() || IsFakeClient() || IsBot() ) ? 0.f : gpGlobals->curtime - m_flLastUserCommandTime; }
 
 	// Team Handling
-	virtual void			ChangeTeam( int iTeamNum ) OVERRIDE { ChangeTeam( iTeamNum, false, false ); }
-	virtual void			ChangeTeam( int iTeamNum, bool bAutoTeam, bool bSilent, bool bAutoBalance = false );
+	virtual void			ChangeTeam( int iTeamNum ) { ChangeTeam(iTeamNum,false, false); }
+	virtual void			ChangeTeam( int iTeamNum, bool bAutoTeam, bool bSilent );
 
 	// say/sayteam allowed?
 	virtual bool		CanHearAndReadChatFrom( CBasePlayer *pPlayer ) { return true; }
@@ -756,7 +781,6 @@ public:
 	int		GetLockViewanglesTickNumber() const { return m_iLockViewanglesTickNumber; }
 	QAngle	GetLockViewanglesData() const { return m_qangLockViewangles; }
 
-	bool	IsLerpingFOV( void ) const;
 	int		GetFOV( void );														// Get the current FOV value
 	int		GetDefaultFOV( void ) const;										// Default FOV if not specified otherwise
 	int		GetFOVForNetworking( void );										// Get the current FOV used for network computations
@@ -773,10 +797,8 @@ public:
 	void	DeactivateMovementConstraint( );
 
 	// talk control
-	virtual bool CanPlayerTalk();
 	void	NotePlayerTalked() { m_fLastPlayerTalkTime = gpGlobals->curtime; }
-	float	LastTimePlayerTalked() const { return m_fLastPlayerTalkTime; }
-	bool	ArePlayerTalkMessagesAvailable();
+	float	LastTimePlayerTalked() { return m_fLastPlayerTalkTime; }
 
 	void	DisableButtons( int nButtons );
 	void	EnableButtons( int nButtons );
@@ -803,29 +825,31 @@ public:
 	uint64		GetSteamIDAsUInt64( void );
 #endif
 
-	int GetRemainingMovementTicksForUserCmdProcessing() const { return m_nMovementTicksForUserCmdProcessingRemaining; }
-	int ConsumeMovementTicksForUserCmdProcessing( int nTicks )
+	float GetRemainingMovementTimeForUserCmdProcessing() const { return m_flMovementTimeForUserCmdProcessingRemaining; }
+	float ConsumeMovementTimeForUserCmdProcessing( float flTimeNeeded )
 	{
-		if ( m_nMovementTicksForUserCmdProcessingRemaining < 0 )
+		if ( m_flMovementTimeForUserCmdProcessingRemaining <= 0.0f )
 		{
-			return 0;
+			return 0.0f;
 		}
-		else if ( nTicks < m_nMovementTicksForUserCmdProcessingRemaining )
+		else if ( flTimeNeeded > m_flMovementTimeForUserCmdProcessingRemaining + FLT_EPSILON )
 		{
-			m_nMovementTicksForUserCmdProcessingRemaining -= nTicks;
-			return nTicks;
+			float flResult = m_flMovementTimeForUserCmdProcessingRemaining;
+			m_flMovementTimeForUserCmdProcessingRemaining = 0.0f;
+			return flResult;
 		}
 		else
 		{
-			nTicks = m_nMovementTicksForUserCmdProcessingRemaining;
-			m_nMovementTicksForUserCmdProcessingRemaining = 0;
-			return nTicks;
+			m_flMovementTimeForUserCmdProcessingRemaining -= flTimeNeeded;
+			if ( m_flMovementTimeForUserCmdProcessingRemaining < 0.0f )
+				m_flMovementTimeForUserCmdProcessingRemaining = 0.0f;
+			return flTimeNeeded;
 		}
 	}
 
 private:
 	// How much of a movement time buffer can we process from this user?
-	int				m_nMovementTicksForUserCmdProcessingRemaining;
+	float				m_flMovementTimeForUserCmdProcessingRemaining;
 
 	// For queueing up CUserCmds and running them from PhysicsSimulate
 	int					GetCommandContextCount( void ) const;
@@ -895,13 +919,10 @@ public:
 
 	char					m_szAnimExtension[32];
 
-	bool					m_bPendingClientSettings; // User client settings changed, but we're not importing them
-							                          // until allowed
 	int						m_nUpdateRate;		// user snapshot rate cl_updaterate
 	float					m_fLerpTime;		// users cl_interp
 	bool					m_bLagCompensation;	// user wants lag compenstation
 	bool					m_bPredictWeapons; //  user has client side predicted weapons
-	bool					m_bRequestPredict; //  user has client prediction enabled
 	
 	float		GetDeathTime( void ) { return m_flDeathTime; }
 
@@ -1133,9 +1154,6 @@ private:
 
 	bool					m_bGamePaused;
 	float					m_fLastPlayerTalkTime;
-	float					m_flPlayerTalkAvailableMessagesTier1;
-	float					m_flPlayerTalkAvailableMessagesTier2;
-	float					m_fLastPlayerTalkAttemptTime;
 	
 	CNetworkVar( CBaseCombatWeaponHandle, m_hLastWeapon );
 
@@ -1220,23 +1238,6 @@ public:
 	virtual bool HasHaptics(){return m_bhasHaptics;}
 	// NVNT sets weather a user should receive haptic device messages.
 	virtual void SetHaptics(bool has) { m_bhasHaptics = has;}
-
-	const char* GetScriptOverlayMaterial() const { return m_Local.m_szScriptOverlayMaterial; }
-	void SetScriptOverlayMaterial( const char *pszMaterial )
-	{
-		if ( !pszMaterial || !*pszMaterial )
-		{
-			m_Local.m_szScriptOverlayMaterial.GetForModify()[0] = '\0';
-			return;
-		}
-
-		V_strncpy( m_Local.m_szScriptOverlayMaterial.GetForModify(), pszMaterial, MAX_PATH );
-	}
-
-	void InputSetScriptOverlayMaterial( inputdata_t &inputdata )
-	{
-		SetScriptOverlayMaterial( inputdata.value.String() );
-	}
 private:
 	// NVNT member variable holding if this user is using a haptic device.
 	bool m_bhasHaptics;
@@ -1266,10 +1267,6 @@ private:
 public:
 	virtual unsigned int PlayerSolidMask( bool brushOnly = false ) const;	// returns the solid mask for the given player, so bots can have a more-restrictive set
 
-	virtual bool BHaveChatSuspensionInCurrentMatch() { return false; }
-
-	// A voice packet from this client was received by the server
-	virtual void OnVoiceTransmit( void ) {}
 };
 
 typedef CHandle<CBasePlayer> CBasePlayerHandle;
@@ -1605,8 +1602,5 @@ enum
 	VEHICLE_ANALOG_BIAS_FORWARD,
 	VEHICLE_ANALOG_BIAS_REVERSE,
 };
-
-class CSendProxyRecipients;
-void* SendProxy_SendNonLocalDataTable( const SendProp *pProp, const void *pStruct, const void *pVarData, CSendProxyRecipients *pRecipients, int objectID );
 
 #endif // PLAYER_H

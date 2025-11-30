@@ -655,15 +655,15 @@ void CBaseEntity::SetPredictionRandomSeed( const CUserCmd *cmd )
 //------------------------------------------------------------------------------
 void CBaseEntity::DecalTrace( trace_t *pTrace, char const *decalName )
 {
-	int indexD = decalsystem->GetDecalIndexForName( decalName );
-	if ( indexD < 0 )
+	int index = decalsystem->GetDecalIndexForName( decalName );
+	if ( index < 0 )
 		return;
 
 	Assert( pTrace->m_pEnt );
 
 	CBroadcastRecipientFilter filter;
 	te->Decal( filter, 0.0, &pTrace->endpos, &pTrace->startpos,
-		pTrace->GetEntityIndex(), pTrace->hitbox, indexD );
+		pTrace->GetEntityIndex(), pTrace->hitbox, index );
 }
 
 //-----------------------------------------------------------------------------
@@ -759,8 +759,14 @@ int CBaseEntity::RegisterThinkContext( const char *szContext )
 //-----------------------------------------------------------------------------
 BASEPTR	CBaseEntity::ThinkSet( BASEPTR func, float thinkTime, const char *szContext )
 {
-#if !defined( CLIENT_DLL ) && defined( _DEBUG )
-	COMPILE_TIME_ASSERT( sizeof(func) == ENTITYFUNCPTR_SIZE );
+#if !defined( CLIENT_DLL )
+#ifdef _DEBUG
+#ifdef GNUC
+	COMPILE_TIME_ASSERT( sizeof(func) == 8 );
+#else
+	COMPILE_TIME_ASSERT( sizeof(func) == 4 );
+#endif
+#endif
 #endif
 
 	// Old system?
@@ -1393,9 +1399,9 @@ bool CBaseEntity::IsBSPModel() const
 	if ( GetSolid() == SOLID_BSP )
 		return true;
 	
-	const model_t *pModel = modelinfo->GetModel( GetModelIndex() );
+	const model_t *model = modelinfo->GetModel( GetModelIndex() );
 
-	if ( GetSolid() == SOLID_VPHYSICS && modelinfo->GetModelType( pModel ) == mod_brush )
+	if ( GetSolid() == SOLID_VPHYSICS && modelinfo->GetModelType( model ) == mod_brush )
 		return true;
 
 	return false;
@@ -1604,9 +1610,10 @@ void CBaseEntity::FireBullets( const FireBulletsInfo_t &info )
 	
 	bool bDoServerEffects = true;
 
-#if defined( HL2MP ) && defined( GAME_DLL )
+//SecobMod__Information: This is a fix which is meant to allow tracers from mounted guns to display once more in-game, by always making sure it returns true.
+/*#if defined( HL2MP ) && defined( GAME_DLL )
 	bDoServerEffects = false;
-#endif
+#endif*/
 
 #if defined( GAME_DLL )
 	if( IsPlayer() )
@@ -2041,7 +2048,11 @@ void CBaseEntity::FireBullets( const FireBulletsInfo_t &info )
 bool CBaseEntity::ShouldDrawUnderwaterBulletBubbles()
 {
 #if defined( HL2_DLL ) && defined( GAME_DLL )
-	CBaseEntity *pPlayer = ( gpGlobals->maxClients == 1 ) ? UTIL_GetLocalPlayer() : NULL;
+	#ifdef SecobMod__Enable_Fixed_Multiplayer_AI
+		CBaseEntity *pPlayer = UTIL_GetNearestVisiblePlayer(this); 
+	#else
+		CBaseEntity *pPlayer = ( gpGlobals->maxClients == 1 ) ? UTIL_GetLocalPlayer() : NULL;
+	#endif //SecobMod__Enable_Fixed_Multiplayer_AI
 	return pPlayer && (pPlayer->GetWaterLevel() == 3);
 #else
 	return false;
@@ -2543,11 +2554,23 @@ ConVar	sv_alternateticks( "sv_alternateticks", ( IsX360() ) ? "1" : "0", FCVAR_S
 //-----------------------------------------------------------------------------
 bool CBaseEntity::IsSimulatingOnAlternateTicks()
 {
+	//.Kave's fix for slow motion single player problems.
+	#ifdef SecobMod__ENABLED_FIXED_MULTIPLAYER_AI
+	if( gpGlobals->maxClients > 1 )
+	{
+		sv_alternateticks.SetValue( 1 );
+	}
+	else if( gpGlobals->maxClients == 1 )
+	{
+		sv_alternateticks.SetValue( 0 );
+	}
+	#else
 	if ( gpGlobals->maxClients != 1 )
 	{
 		return false;
 	}
-
+	#endif
+	
 	return sv_alternateticks.GetBool();
 }
 

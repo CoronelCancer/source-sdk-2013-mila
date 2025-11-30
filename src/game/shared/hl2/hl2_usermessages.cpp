@@ -50,5 +50,10 @@ void RegisterUserMessages( void )
 	// NVNT register haptic user messages
 	RegisterHapticMessages();
 #endif
-	RegisterScriptMessages();
+
+	#ifdef SecobMod__USE_PLAYERCLASSES
+		usermessages->Register( "SSPlayerClassesBGCheck", -1 );
+		usermessages->Register( "ShowSSPlayerClasses", -1 );
+		usermessages->Register( "ForceHUDReload", -1 );
+	#endif //SecobMod__USE_PLAYERCLASSES
 }

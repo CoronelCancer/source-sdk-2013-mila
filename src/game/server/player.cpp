@@ -95,11 +95,6 @@ ConVar	spec_freeze_traveltime( "spec_freeze_traveltime", "0.4", FCVAR_CHEAT | FC
 
 ConVar sv_bonus_challenge( "sv_bonus_challenge", "0", FCVAR_REPLICATED, "Set to values other than 0 to select a bonus map challenge type." );
 
-ConVar sv_chat_bucket_size_tier1( "sv_chat_bucket_size_tier1", "4", FCVAR_NONE, "The maximum size of the short term chat msg bucket." );
-ConVar sv_chat_seconds_per_msg_tier1( "sv_chat_seconds_per_msg_tier1", "3", FCVAR_NONE, "The number of seconds to accrue an additional short term chat msg." );
-ConVar sv_chat_bucket_size_tier2( "sv_chat_bucket_size_tier2", "30", FCVAR_NONE, "The maximum size of the long term chat msg bucket." );
-ConVar sv_chat_seconds_per_msg_tier2( "sv_chat_seconds_per_msg_tier2", "10", FCVAR_NONE, "The number of seconds to accrue an additional long term chat msg." );
-
 static ConVar sv_maxusrcmdprocessticks( "sv_maxusrcmdprocessticks", "24", FCVAR_NOTIFY, "Maximum number of client-issued usrcmd ticks that can be replayed in packet loss conditions, 0 to allow no restrictions" );
 
 // memdbgon must be the last include file in a .cpp file!!!
@@ -188,7 +183,7 @@ ConVar	sk_player_stomach( "sk_player_stomach","1" );
 ConVar	sk_player_arm( "sk_player_arm","1" );
 ConVar	sk_player_leg( "sk_player_leg","1" );
 
-ConVar	sv_player_usercommand_timeout( "sv_player_usercommand_timeout", "3", FCVAR_CHEAT, "After this many seconds without a usercommand from a player, the server will RunNullCommand as if client sends an empty command." );
+//ConVar	player_usercommand_timeout( "player_usercommand_timeout", "10", 0, "After this many seconds without a usercommand from a player, the client is kicked." );
 #ifdef _DEBUG
 ConVar  sv_player_net_suppress_usercommands( "sv_player_net_suppress_usercommands", "0", FCVAR_CHEAT, "For testing usercommand hacking sideeffects. DO NOT SHIP" );
 #endif // _DEBUG
@@ -199,7 +194,11 @@ ConVar  player_debug_print_damage( "player_debug_print_damage", "0", FCVAR_CHEAT
 
 void CC_GiveCurrentAmmo( void )
 {
-	CBasePlayer *pPlayer = UTIL_PlayerByIndex(1);
+	#ifdef SecobMod__Enable_Fixed_Multiplayer_AI
+		CBasePlayer *pPlayer = UTIL_GetCommandClient(); 
+	#else
+		CBasePlayer *pPlayer = UTIL_PlayerByIndex(1);
+	#endif //SecobMod__Enable_Fixed_Multiplayer_AI
 
 	if( pPlayer )
 	{
@@ -256,6 +255,11 @@ END_DATADESC()
 
 // Global Savedata for player
 BEGIN_DATADESC( CBasePlayer )
+
+	#ifdef SecobMod__MULTIPLAYER_LEVEL_TRANSITIONS
+	DEFINE_FIELD( m_bTransition, FIELD_BOOLEAN ),
+	DEFINE_FIELD( m_bTransitionTeleported, FIELD_BOOLEAN ),
+	#endif //SecobMod__MULTIPLAYER_LEVEL_TRANSITIONS
 
 	DEFINE_EMBEDDED( m_Local ),
 #if defined USES_ECON_ITEMS
@@ -412,9 +416,6 @@ BEGIN_DATADESC( CBasePlayer )
 	DEFINE_FIELD( m_bitsDamageType, FIELD_INTEGER ),
 	DEFINE_AUTO_ARRAY( m_rgbTimeBasedDamage, FIELD_CHARACTER ),
 	DEFINE_FIELD( m_fLastPlayerTalkTime, FIELD_FLOAT ),
-	DEFINE_FIELD( m_fLastPlayerTalkAttemptTime, FIELD_FLOAT ),
-	DEFINE_FIELD( m_flPlayerTalkAvailableMessagesTier1, FIELD_FLOAT ),
-	DEFINE_FIELD( m_flPlayerTalkAvailableMessagesTier2, FIELD_FLOAT ),
 	DEFINE_FIELD( m_hLastWeapon, FIELD_EHANDLE ),
 
 #if !defined( NO_ENTITY_PREDICTION )
@@ -460,7 +461,7 @@ BEGIN_DATADESC( CBasePlayer )
 
 	DEFINE_FIELD( m_nNumCrateHudHints, FIELD_INTEGER ),
 
-	DEFINE_INPUTFUNC( FIELD_STRING, "SetScriptOverlayMaterial", InputSetScriptOverlayMaterial ),
+
 
 	// DEFINE_FIELD( m_nBodyPitchPoseParam, FIELD_INTEGER ),
 	// DEFINE_ARRAY( m_StepSoundCache, StepSoundCache_t,  2  ),
@@ -556,7 +557,17 @@ CBasePlayer *CBasePlayer::CreatePlayer( const char *className, edict_t *ed )
 //-----------------------------------------------------------------------------
 CBasePlayer::CBasePlayer( )
 {
+
+#ifdef SecobMod__MULTIPLAYER_CHAT_BUBBLES
+m_hChatBubble = NULL; // make sure null.
+#endif //SecobMod__MULTIPLAYER_CHAT_BUBBLES
+
 	AddEFlags( EFL_NO_AUTO_EDICT_ATTACH );
+	
+#ifdef SecobMod__MULTIPLAYER_LEVEL_TRANSITIONS
+m_bTransition = false;
+m_bTransitionTeleported = false;
+#endif //SecobMod__MULTIPLAYER_LEVEL_TRANSITIONS
 
 #ifdef _DEBUG
 	m_vecAutoAim.Init();
@@ -601,19 +612,14 @@ CBasePlayer::CBasePlayer( )
 
 	m_hZoomOwner = NULL;
 
-	m_bPendingClientSettings = false;
 	m_nUpdateRate = 20;  // cl_updaterate defualt
 	m_fLerpTime = 0.1f; // cl_interp default
 	m_bPredictWeapons = true;
-	m_bRequestPredict = true;
 	m_bLagCompensation = false;
 	m_flLaggedMovementValue = 1.0f;
 	m_StuckLast = 0;
 	m_impactEnergyScale = 1.0f;
 	m_fLastPlayerTalkTime = 0.0f;
-	m_fLastPlayerTalkAttemptTime = 0.0f;
-	m_flPlayerTalkAvailableMessagesTier1 = 1.0f;
-	m_flPlayerTalkAvailableMessagesTier2 = 10.0f;
 	m_PlayerInfo.SetParent( this );
 
 	ResetObserverMode();
@@ -649,7 +655,7 @@ CBasePlayer::CBasePlayer( )
 	m_vecConstraintCenter = vec3_origin;
 
 	m_flLastUserCommandTime = 0.f;
-	m_nMovementTicksForUserCmdProcessingRemaining = 0;
+	m_flMovementTimeForUserCmdProcessingRemaining = 0.0f;
 
 	m_flLastObjectiveTime = -1.f;
 }
@@ -666,11 +672,6 @@ CBasePlayer::~CBasePlayer( )
 //-----------------------------------------------------------------------------
 void CBasePlayer::UpdateOnRemove( void )
 {
-	if ( !g_pGameRules->IsMultiplayer() && g_pScriptVM )
-	{
-		g_pScriptVM->SetValue( "player", SCRIPT_VARIANT_NULL );
-	}
-
 	VPhysicsDestroyObject();
 
 	// Remove him from his current team
@@ -746,7 +747,35 @@ int CBasePlayer::ShouldTransmit( const CCheckTransmitInfo *pInfo )
 	return BaseClass::ShouldTransmit( pInfo );
 }
 
+#ifdef SecobMod__Enable_Fixed_Multiplayer_AI
+bool CBasePlayer::WantsLagCompensationOnEntity( const CBaseEntity *pEntity, const CUserCmd *pCmd, const CBitVec<MAX_EDICTS> *pEntityTransmitBits ) const 
+{
+	//Tony; only check teams in teamplay
+	if ( gpGlobals->teamplay )
+	{
+		// Team members shouldn't be adjusted unless friendly fire is on.
+		if ( !friendlyfire.GetInt() && pEntity->GetTeamNumber() == GetTeamNumber() ) 
+			return false;
+	}
 
+	// If this entity hasn't been transmitted to us and acked, then don't bother lag compensating it.
+	if ( pEntityTransmitBits && !pEntityTransmitBits->Get( pEntity->entindex() ) ) 
+		return false;
+
+	const Vector &vMyOrigin = GetAbsOrigin();
+	const Vector &vHisOrigin = pEntity->GetAbsOrigin();
+
+	// get max distance player could have moved within max lag compensation time, 
+	// multiply by 1.5 to to avoid "dead zones"  (sqrt(2) would be the exact value)
+	//float maxDistance = 1.5 * pPlayer->MaxSpeed() * sv_maxunlag.GetFloat(); 
+	float maxspeed; 
+	CBasePlayer *pPlayer = ToBasePlayer((CBaseEntity*)pEntity); 
+	if ( pPlayer ) 
+		maxspeed = pPlayer->MaxSpeed(); 
+	else 
+		maxspeed = 600; 
+	float maxDistance = 1.5 * maxspeed * sv_maxunlag.GetFloat(); 
+#else
 bool CBasePlayer::WantsLagCompensationOnEntity( const CBasePlayer *pPlayer, const CUserCmd *pCmd, const CBitVec<MAX_EDICTS> *pEntityTransmitBits ) const
 {
 	// Team members shouldn't be adjusted unless friendly fire is on.
@@ -763,7 +792,8 @@ bool CBasePlayer::WantsLagCompensationOnEntity( const CBasePlayer *pPlayer, cons
 	// get max distance player could have moved within max lag compensation time, 
 	// multiply by 1.5 to to avoid "dead zones"  (sqrt(2) would be the exact value)
 	float maxDistance = 1.5 * pPlayer->MaxSpeed() * sv_maxunlag.GetFloat();
-
+#endif //SecobMod__Enable_Fixed_Multiplayer_AI	
+	
 	// If the player is within this distance, lag compensate them in case they're running past us.
 	if ( vHisOrigin.DistTo( vMyOrigin ) < maxDistance )
 		return true;
@@ -1671,6 +1701,11 @@ int CBasePlayer::OnTakeDamage_Alive( const CTakeDamageInfo &info )
 
 void CBasePlayer::Event_Killed( const CTakeDamageInfo &info )
 {
+
+#ifdef SecobMod__MULTIPLAYER_CHAT_BUBBLES
+KillChatBubble();
+#endif //SecobMod__MULTIPLAYER_CHAT_BUBBLES
+
 	CSound *pSound;
 
 	if ( Hints() )
@@ -1749,6 +1784,135 @@ void CBasePlayer::Event_Killed( const CTakeDamageInfo &info )
 
 	BaseClass::Event_Killed( info );
 }
+
+
+#ifdef SecobMod__MULTIPLAYER_CHAT_BUBBLES
+#define CHAT_BUBBLE_MODEL "models/extras/info_speech.mdl"
+
+class CChatBubble : public CBaseAnimating
+{
+public:
+	DECLARE_CLASS(CChatBubble, CBaseAnimating);
+	CChatBubble::CChatBubble()
+	{
+		UseClientSideAnimation();
+	}
+
+	float m_flRotation;
+	float m_flSinwave;
+	float m_flAlpha;
+    EHANDLE player;
+	virtual void Spawn()
+	{
+		SetModel(CHAT_BUBBLE_MODEL);
+		SetSolid(SOLID_NONE);
+		SetMoveType(MOVETYPE_NONE);
+		BaseClass::Spawn();
+
+		SetThink( &CChatBubble::BubbleThink );
+		SetNextThink(gpGlobals->curtime + 0.01);
+
+		m_flRotation = 2;
+		m_flSinwave = 0;
+		m_flAlpha = 220;
+
+		SetRenderColorA( m_flAlpha );
+		SetRenderColor( m_flAlpha, m_flAlpha, m_flAlpha );
+		SetRenderMode( kRenderTransAdd );
+	}
+	virtual void Precache()
+	{
+		PrecacheModel(CHAT_BUBBLE_MODEL);
+	}
+	virtual void BubbleThink( void ){
+		//	rotate the chatbubble - use local angles to fix the chat bubble choosing its own rotation direction.
+		QAngle aRotations = GetLocalAngles();
+		aRotations[1] = aRotations[1] + m_flRotation;
+		SetLocalAngles( aRotations );
+
+		//	set it to follow the player with an offset
+		if( player ){
+			//	give it a bit of a bounce
+			m_flSinwave+= .05;
+			if( m_flSinwave > 1000 )
+				m_flSinwave = 0;
+			float flVerticalOffset = sin( m_flSinwave ) * 5;
+			
+			//	clamp to the player's position and go up above the head
+			Vector fr, rt, up;
+			AngleVectors(player->GetAbsAngles(), &fr, &rt, &up);			
+			Vector offset = player->GetAbsOrigin() + up * ( 85 + flVerticalOffset );			
+			SetAbsOrigin( offset );
+		}
+
+		if( m_flAlpha < 255 ){
+			m_flAlpha += 10;
+			if( m_flAlpha > 255 )
+				m_flAlpha = 255;
+			SetRenderColor( m_flAlpha, m_flAlpha, m_flAlpha );
+			SetRenderColorA( m_flAlpha );
+		}
+
+
+		SetNextThink(gpGlobals->curtime + 0.01);
+	}
+};
+LINK_ENTITY_TO_CLASS(chat_bubble, CChatBubble);
+PRECACHE_REGISTER(chat_bubble);
+
+void CBasePlayer::MakeChatBubble(int chatbubble)
+{
+	DevMsg("Attempting to create ChatBubble...\n");
+	//Tony; incase there already is one, and another check failed.
+	if ( m_lifeState != LIFE_ALIVE || GetTeamNumber() == TEAM_SPECTATOR)
+	{
+		KillChatBubble();
+		return;
+	}
+
+	//Tony; don't make new ones if you already have one.
+	if (m_hChatBubble.Get() != NULL)
+		return;
+
+	Vector fr, rt, up;
+	AngleVectors(GetAbsAngles(), &fr, &rt, &up);
+	//Vector offset = GetAbsOrigin() + up * 64;
+	Vector offset = GetAbsOrigin() + up * 85;
+
+	CChatBubble *pBubble = (CChatBubble*)CBaseEntity::CreateNoSpawn( "chat_bubble", offset, GetAbsAngles(), this );
+	if (pBubble)
+	{
+		pBubble->Spawn();
+		pBubble->SetParent( this );
+		//pBubble->FollowEntity(this, false);
+		m_hChatBubble = pBubble; //Tony; assign it
+		DevMsg("ChatBubble Created.\n");
+	}
+
+}
+void CBasePlayer::KillChatBubble()
+{
+	if (m_hChatBubble.Get() != NULL)
+	{
+		m_hChatBubble.Get()->FollowEntity(NULL);
+		m_hChatBubble.Get()->SetThink(&CBaseEntity::Remove);
+		m_hChatBubble.Get()->SetNextThink(gpGlobals->curtime + 0.001);
+		m_hChatBubble = NULL;
+		DevMsg("ChatBubble Killed.\n");
+	}
+}
+
+void CBasePlayer::CheckChatBubble( CUserCmd *cmd )
+{
+	if (!cmd)
+		return;
+
+	if (cmd->chatbubble)
+		MakeChatBubble(cmd->chatbubble);
+	else
+		KillChatBubble();
+}
+#endif //SecobMod__MULTIPLAYER_CHAT_BUBBLES
 
 void CBasePlayer::Event_Dying( const CTakeDamageInfo& info )
 {
@@ -2890,6 +3054,12 @@ float CBasePlayer::GetHeldObjectMass( IPhysicsObject *pHeldObject )
 	return 0;
 }
 
+#ifdef SecobMod__ALLOW_SUPER_GRAVITY_GUN
+CBaseEntity	*CBasePlayer::GetHeldObject( void )
+{
+	return NULL;
+}
+#endif //SecobMod__ALLOW_SUPER_GRAVITY_GUN
 
 //-----------------------------------------------------------------------------
 // Purpose:	Server side of jumping rules.  Most jumping logic is already
@@ -3090,16 +3260,6 @@ int CBasePlayer::DetermineSimulationTicks( void )
 		simulation_ticks += ctx->numcmds + ctx->dropped_packets;
 	}
 
-	// Only allow rewinding if we actually behind by at least that many ticks.
-	// This doesn't quite guarantee that m_nTickBase is monotonically increasing, but it gets close and prevents users
-	// from manipulating the game time by more than 0.25s.
-	//
-	// REI- Ideally I'd like to put more serious restrictions on user command timing here, to lockstep the clients
-	// a bit harder and prevent even this 0.25s manipulation, but my experiments so far led to unacceptable hitching
-	// even for legitimate users.
-	if ( simulation_ticks > m_nMovementTicksForUserCmdProcessingRemaining )
-		simulation_ticks = m_nMovementTicksForUserCmdProcessingRemaining;
-
 	return simulation_ticks;
 }
 
@@ -3179,9 +3339,6 @@ void CBasePlayer::AdjustPlayerTimeBase( int simulation_ticks )
 	}
 }
 
-//-----------------------------------------------------------------------------
-// Purpose: 
-//-----------------------------------------------------------------------------
 void CBasePlayer::RunNullCommand( void )
 {
 	CUserCmd cmd;	// NULL command
@@ -3238,9 +3395,6 @@ void CBasePlayer::PhysicsSimulate( void )
 	}
 	
 	m_nSimulationTick = gpGlobals->tickcount;
-
-	// Grant the client some time buffer to execute user commands
-	m_nMovementTicksForUserCmdProcessingRemaining++;
 
 	// See how many CUserCmds are queued up for running
 	int simulation_ticks = DetermineSimulationTicks();
@@ -3348,15 +3502,6 @@ void CBasePlayer::PhysicsSimulate( void )
 
 	float vphysicsArrivalTime = TICK_INTERVAL;
 
-	// Now run the commands
-	MoveHelperServer()->SetHost( this );
-
-	// Suppress predicted events, etc.
-	if ( IsPredictingWeapons() )
-	{
-		IPredictionSystem::SuppressHostEvents( this );
-	}
-
 #ifdef _DEBUG
 	if ( sv_player_net_suppress_usercommands.GetBool() )
 	{
@@ -3364,14 +3509,39 @@ void CBasePlayer::PhysicsSimulate( void )
 	}
 #endif // _DEBUG
 
-	// Process user commands
+	int numUsrCmdProcessTicksMax = sv_maxusrcmdprocessticks.GetInt();
+	if ( gpGlobals->maxClients != 1 && numUsrCmdProcessTicksMax ) // don't apply this filter in SP games
+	{
+		// Grant the client some time buffer to execute user commands
+		m_flMovementTimeForUserCmdProcessingRemaining += TICK_INTERVAL;
+
+		// but never accumulate more than N ticks
+		if ( m_flMovementTimeForUserCmdProcessingRemaining > numUsrCmdProcessTicksMax * TICK_INTERVAL )
+			m_flMovementTimeForUserCmdProcessingRemaining = numUsrCmdProcessTicksMax * TICK_INTERVAL;
+	}
+	else
+	{
+		// Otherwise we don't care to track time
+		m_flMovementTimeForUserCmdProcessingRemaining = FLT_MAX;
+	}
+
+	// Now run the commands
 	if ( commandsToRun > 0 )
 	{
+		m_flLastUserCommandTime = savetime;
+
+		MoveHelperServer()->SetHost( this );
+
+		// Suppress predicted events, etc.
+		if ( IsPredictingWeapons() )
+		{
+			IPredictionSystem::SuppressHostEvents( this );
+		}
+
 		for ( int i = 0; i < commandsToRun; ++i )
 		{
 			PlayerRunCommand( &vecAvailCommands[ i ], MoveHelperServer() );
-			m_flLastUserCommandTime = savetime;
-		
+
 			// Update our vphysics object.
 			if ( m_pPhysicsController )
 			{
@@ -3381,71 +3551,44 @@ void CBasePlayer::PhysicsSimulate( void )
 				vphysicsArrivalTime += TICK_INTERVAL;
 			}
 		}
-	}
-	else if ( GetTimeSinceLastUserCommand() > sv_player_usercommand_timeout.GetFloat() )
-	{
-		// no usercommand from player after some threshold
-		// server should start RunNullCommand as if client sends an empty command so that Think and gamestate related things run properly
-		RunNullCommand();
-	}
 
-	int nMaxTicks = sv_maxusrcmdprocessticks.GetInt();
-	if ( nMaxTicks && gpGlobals->maxClients != 1 ) // Don't apply this filter in SP games
-	{
-		if ( m_nMovementTicksForUserCmdProcessingRemaining > nMaxTicks )
+		// Always reset after running commands
+		IPredictionSystem::SuppressHostEvents( NULL );
+
+		MoveHelperServer()->SetHost( NULL );
+
+		// Copy in final origin from simulation
+		CPlayerSimInfo *pi = NULL;
+		if ( m_vecPlayerSimInfo.Count() > 0 )
 		{
-			//DevMsg( "Client %s dropped too many packets, simulating last cmd\n", m_szNetname );
-			
-			// Run a copy of the user's last command
-			// but make sure it's valid
-			CUserCmd cmd = m_LastCmd;
-			cmd.tick_count = gpGlobals->tickcount;
-			cmd.viewangles = EyeAngles();
-			pl.fixangle = FIXANGLE_NONE; // this forces use of cmd.viewangles directly, not as a relative value
-			PlayerRunCommand( &cmd, MoveHelperServer() );
-
-			if ( m_nMovementTicksForUserCmdProcessingRemaining > nMaxTicks )
-			{
-				// If this happens the user managed to execute a 'null' command that didn't make it through simulation.
-				// This means we should adjust the code above to make sure it always generates a valid command.
-				//Assert( false ); // security failure, airstuck!
-
-				// still make sure to avoid speedhax
-				m_nMovementTicksForUserCmdProcessingRemaining = nMaxTicks;
-			}
-			
-			// Update our vphysics object.
-			if ( m_pPhysicsController )
-			{
-				VPROF( "CBasePlayer::PhysicsSimulate-UpdateVPhysicsPosition" );
-				// If simulating at 2 * TICK_INTERVAL, add an extra TICK_INTERVAL to position arrival computation
-				UpdateVPhysicsPosition( m_vNewVPhysicsPosition, m_vNewVPhysicsVelocity, vphysicsArrivalTime );
-				vphysicsArrivalTime += TICK_INTERVAL;
-			}
+			pi = &m_vecPlayerSimInfo[ m_vecPlayerSimInfo.Tail() ];
+			pi->m_flTime = Plat_FloatTime();
+			pi->m_vecAbsOrigin = GetAbsOrigin();
+			pi->m_flGameSimulationTime = gpGlobals->curtime;
+			pi->m_nNumCmds = commandsToRun;
 		}
-	}
-
-	// Always reset after running commands
-	IPredictionSystem::SuppressHostEvents( NULL );
-
-	MoveHelperServer()->SetHost( NULL );
-
-	// Copy in final origin from simulation
-	CPlayerSimInfo *pi = NULL;
-	if ( m_vecPlayerSimInfo.Count() > 0 )
-	{
-		pi = &m_vecPlayerSimInfo[ m_vecPlayerSimInfo.Tail() ];
-		pi->m_flTime = Plat_FloatTime();
-		pi->m_vecAbsOrigin = GetAbsOrigin();
-		pi->m_flGameSimulationTime = gpGlobals->curtime;
-		pi->m_nNumCmds = commandsToRun;
 	}
 
 	// Restore the true server clock
 	// FIXME:  Should this occur after simulation of children so
 	//  that they are in the timespace of the player?
 	gpGlobals->curtime		= savetime;
-	gpGlobals->frametime	= saveframetime;
+	gpGlobals->frametime	= saveframetime;	
+
+// 	// Kick the player if they haven't sent a user command in awhile in order to prevent clients
+// 	// from using packet-level manipulation to mess with gamestate.  Not sending usercommands seems
+// 	// to have all kinds of bad effects, such as stalling a bunch of Think()'s and gamestate handling.
+// 	// An example from TF: A medic stops sending commands after deploying an uber on another player.
+// 	// As a result, invuln is permanently on the heal target because the maintenance code is stalled.
+// 	if ( GetTimeSinceLastUserCommand() > player_usercommand_timeout.GetFloat() )
+// 	{
+// 		// If they have an active netchan, they're almost certainly messing with usercommands?
+// 		INetChannelInfo *pNetChanInfo = engine->GetPlayerNetInfo( entindex() );
+// 		if ( pNetChanInfo && pNetChanInfo->GetTimeSinceLastReceived() < 5.f )
+// 		{
+// 			engine->ServerCommand( UTIL_VarArgs( "kickid %d %s\n", GetUserID(), "UserCommand Timeout" ) );
+// 		}
+// 	}
 }
 
 unsigned int CBasePlayer::PhysicsSolidMaskForEntity() const
@@ -3459,81 +3602,6 @@ unsigned int CBasePlayer::PhysicsSolidMaskForEntity() const
 void CBasePlayer::ForceSimulation()
 {
 	m_nSimulationTick = -1;
-}
-
-//-----------------------------------------------------------------------------
-// Purpose: Callback from engine when this player's client settings (userinfo) change
-//-----------------------------------------------------------------------------
-void CBasePlayer::ClientSettingsChanged()
-{
-	if ( !g_pGameRules->IsConnectedUserInfoChangeAllowed( this ) )
-	{
-		m_bPendingClientSettings = true;
-		return;
-	}
-
-	#define QUICKGETCVARVALUE(v) (engine->GetClientConVarValue( this->entindex(), v ))
-
-	// get network setting for prediction & lag compensation
-
-	// Unfortunately, we have to duplicate the code in cdll_bounded_cvars.cpp here because the client
-	// doesn't send the virtualized value up (because it has no way to know when the virtualized value
-	// changes). Possible todo: put the responsibility on the bounded cvar to notify the engine when
-	// its virtualized value has changed.
-
-	this->m_nUpdateRate = Q_atoi( QUICKGETCVARVALUE("cl_updaterate") );
-	static const ConVar *pMinUpdateRate = g_pCVar->FindVar( "sv_minupdaterate" );
-	static const ConVar *pMaxUpdateRate = g_pCVar->FindVar( "sv_maxupdaterate" );
-	if ( pMinUpdateRate && pMaxUpdateRate )
-		this->m_nUpdateRate = clamp( this->m_nUpdateRate, (int) pMinUpdateRate->GetFloat(), (int) pMaxUpdateRate->GetFloat() );
-
-	bool useInterpolation = Q_atoi( QUICKGETCVARVALUE("cl_interpolate") ) != 0;
-	if ( useInterpolation )
-	{
-		float flLerpRatio = Q_atof( QUICKGETCVARVALUE("cl_interp_ratio") );
-		if ( flLerpRatio == 0 )
-			flLerpRatio = 1.0f;
-		float flLerpAmount = Q_atof( QUICKGETCVARVALUE("cl_interp") );
-
-		static const ConVar *pMin = g_pCVar->FindVar( "sv_client_min_interp_ratio" );
-		static const ConVar *pMax = g_pCVar->FindVar( "sv_client_max_interp_ratio" );
-		if ( pMin && pMax && pMin->GetFloat() != -1 )
-		{
-			flLerpRatio = clamp( flLerpRatio, pMin->GetFloat(), pMax->GetFloat() );
-		}
-		else
-		{
-			if ( flLerpRatio == 0 )
-				flLerpRatio = 1.0f;
-		}
-		// #define FIXME_INTERP_RATIO
-		this->m_fLerpTime = MAX( flLerpAmount, flLerpRatio / this->m_nUpdateRate );
-	}
-	else
-	{
-		this->m_fLerpTime = 0.0f;
-	}
-
-#if !defined( NO_ENTITY_PREDICTION )
-	bool usePrediction = Q_atoi( QUICKGETCVARVALUE("cl_predict")) != 0;
-
-	if ( usePrediction )
-	{
-		this->m_bRequestPredict  = true;
-		this->m_bPredictWeapons  = Q_atoi( QUICKGETCVARVALUE("cl_predictweapons")) != 0;
-		this->m_bLagCompensation = Q_atoi( QUICKGETCVARVALUE("cl_lagcompensation")) != 0;
-	}
-	else
-#endif
-	{
-		this->m_bRequestPredict  = false;
-		this->m_bPredictWeapons  = false;
-		this->m_bLagCompensation = false;
-	}
-
-	#undef QUICKGETCVARVALUE
-
-	m_bPendingClientSettings = false;
 }
 
 ConVar sv_usercmd_custom_random_seed( "sv_usercmd_custom_random_seed", "1", FCVAR_CHEAT, "When enabled server will populate an additional random seed independent of the client" );
@@ -4564,7 +4632,7 @@ void FixPlayerCrouchStuck( CBasePlayer *pPlayer )
 
 	// Move up as many as 18 pixels if the player is stuck.
 	int i;
-	Vector org = pPlayer->GetAbsOrigin();
+	Vector org = pPlayer->GetAbsOrigin();;
 	for ( i = 0; i < 18; i++ )
 	{
 		UTIL_TraceHull( pPlayer->GetAbsOrigin(), pPlayer->GetAbsOrigin(), 
@@ -4638,12 +4706,6 @@ void CBasePlayer::ForceOrigin( const Vector &vecOrigin )
 //-----------------------------------------------------------------------------
 void CBasePlayer::PostThink()
 {
-	// Attempt to apply pending client settings
-	if ( m_bPendingClientSettings )
-	{
-		ClientSettingsChanged();
-	}
-
 	m_vecSmoothedVelocity = m_vecSmoothedVelocity * SMOOTHING_FACTOR + GetAbsVelocity() * ( 1 - SMOOTHING_FACTOR );
 
 	if ( !g_fGameOver && !m_iPlayerLocked )
@@ -5027,6 +5089,11 @@ void CBasePlayer::InitialSpawn( void )
 //-----------------------------------------------------------------------------
 void CBasePlayer::Spawn( void )
 {
+
+	#ifdef SecobMod__MULTIPLAYER_CHAT_BUBBLES
+		KillChatBubble();
+	#endif //SecobMod__MULTIPLAYER_CHAT_BUBBLES
+
 	// Needs to be done before weapons are given
 	if ( Hints() )
 	{
@@ -5183,11 +5250,6 @@ void CBasePlayer::Spawn( void )
 
 	// track where we are in the nav mesh
 	UpdateLastKnownArea();
-
-	if ( !g_pGameRules->IsMultiplayer() && g_pScriptVM )
-	{
-		g_pScriptVM->SetValue( "player", GetScriptInstance() );
-	}
 
 	m_weaponFiredTimer.Invalidate();
 }
@@ -5380,11 +5442,6 @@ void CBasePlayer::OnRestore( void )
 	m_nVehicleViewSavedFrame = 0;
 
 	m_nBodyPitchPoseParam = LookupPoseParameter( "body_pitch" );
-
-	if ( gpGlobals->eLoadType == MapLoad_Transition )
-	{
-		g_pScriptVM->SetValue( "player", GetScriptInstance() );
-	}
 }
 
 /* void CBasePlayer::SetTeamName( const char *pTeamName )
@@ -5581,7 +5638,9 @@ bool CBasePlayer::GetInVehicle( IServerVehicle *pVehicle, int nRole )
 
 	if ( !pVehicle->IsPassengerVisible( nRole ) )
 	{
-		AddEffects( EF_NODRAW );
+		#ifndef SecobMod__ALLOW_PLAYER_MODELS_IN_VEHICLES
+		AddEffects( EF_NODRAW ); //SecobMod__Information: This causes players to have invisible third person models in vehicles.
+		#endif SecobMod__ALLOW_PLAYER_MODELS_IN_VEHICLES
 	}
 
 	// Put us in the vehicle
@@ -5634,16 +5693,6 @@ bool CBasePlayer::GetInVehicle( IServerVehicle *pVehicle, int nRole )
 	m_iVehicleAnalogBias = VEHICLE_ANALOG_BIAS_NONE;
 
 	OnVehicleStart();
-
-	if ( IsPlayer() )
-	{
-		IGameEvent *event = gameeventmanager->CreateEvent( "enter_vehicle" );
-		if ( event )
-		{
-			event->SetInt( "vehicle", pVehicle->GetVehicleEnt()->entindex() );
-			gameeventmanager->FireEvent( event );
-		}
-	}
 
 	return true;
 }
@@ -5718,25 +5767,8 @@ void CBasePlayer::LeaveVehicle( const Vector &vecExitPoint, const QAngle &vecExi
 
 	// Just cut all of the rumble effects. 
 	RumbleEffect( RUMBLE_STOP_ALL, 0, RUMBLE_FLAGS_NONE );
-
-	if ( IsPlayer() )
-	{
-		IGameEvent *event = gameeventmanager->CreateEvent( "leave_vehicle" );
-		if ( event )
-		{
-			event->SetInt( "vehicle", pVehicle->GetVehicleEnt()->entindex() );
-			gameeventmanager->FireEvent( event );
-		}
-	}
 }
 
-//-----------------------------------------------------------------------------
-// Used by vscript to determine if the player is noclipping
-//-----------------------------------------------------------------------------
-bool CBasePlayer::ScriptIsPlayerNoclipping( void )
-{
-	return ( GetMoveType() == MOVETYPE_NOCLIP );
-}
 
 //==============================================
 // !!!UNDONE:ultra temporary SprayCan entity to apply
@@ -5867,21 +5899,7 @@ CBaseEntity	*CBasePlayer::GiveNamedItem( const char *pszName, int iSubType )
 
 	if ( pent != NULL && !(pent->IsMarkedForDeletion()) ) 
 	{
-#ifdef HL2MP
-		// misyl: Fix player's spawned weapons being dropped
-		// if they can't pick them up at spawn or died too quickly, etc.
-		if ( pWeapon )
-		{
-			if ( !BumpWeapon( pWeapon ) )
-			{
-				UTIL_Remove( pWeapon );
-			}
-		}
-		else
-#endif
-		{
-			pent->Touch( this );
-		}
+		pent->Touch( this );
 	}
 
 	return pent;
@@ -6168,6 +6186,7 @@ void CBasePlayer::ImpulseCommands( )
 	m_nImpulse = 0;
 }
 
+#ifdef SecobMod__ALLOW_VALVE_APPROVED_CHEATING 
 #ifdef HL2_EPISODIC
 
 //-----------------------------------------------------------------------------
@@ -6178,7 +6197,8 @@ static void CreateJalopy( CBasePlayer *pPlayer )
 	// Cheat to create a jeep in front of the player
 	Vector vecForward;
 	AngleVectors( pPlayer->EyeAngles(), &vecForward );
-	CBaseEntity *pJeep = (CBaseEntity *)CreateEntityByName( "prop_vehicle_jeep" );
+	//SecobMod - If episodic is enabled give the jalopy not the jeep.
+	CBaseEntity *pJeep = (CBaseEntity *)CreateEntityByName( "prop_vehicle_jalopy" );
 	if ( pJeep )
 	{
 		Vector vecOrigin = pPlayer->GetAbsOrigin() + vecForward * 256 + Vector(0,0,64);
@@ -6215,7 +6235,13 @@ static void CreateJeep( CBasePlayer *pPlayer )
 	// Cheat to create a jeep in front of the player
 	Vector vecForward;
 	AngleVectors( pPlayer->EyeAngles(), &vecForward );
+//Tony; in sp sdk, we have prop_vehicle_hl2buggy; because episode 2 modified the jeep code to turn it into the jalopy instead of the regular buggy
+//SecobMod__Information: Changed the define to hl2_episodic so people can summon the hl2 buggy.
+#ifdef HL2_EPISODIC
+	CBaseEntity *pJeep = (CBaseEntity *)CreateEntityByName( "prop_vehicle_hl2buggy" );
+#else
 	CBaseEntity *pJeep = (CBaseEntity *)CreateEntityByName( "prop_vehicle_jeep" );
+#endif
 	if ( pJeep )
 	{
 		Vector vecOrigin = pPlayer->GetAbsOrigin() + vecForward * 256 + Vector(0,0,64);
@@ -6224,7 +6250,8 @@ static void CreateJeep( CBasePlayer *pPlayer )
 		pJeep->SetAbsAngles( vecAngles );
 		pJeep->KeyValue( "model", "models/buggy.mdl" );
 		pJeep->KeyValue( "solid", "6" );
-		pJeep->KeyValue( "targetname", "jeep" );
+		//SecobMod
+		pJeep->KeyValue( "targetname", "hl2buggy" );
 		pJeep->KeyValue( "vehiclescript", "scripts/vehicles/jeep_test.txt" );
 		DispatchSpawn( pJeep );
 		pJeep->Activate();
@@ -6283,7 +6310,7 @@ void CC_CH_CreateAirboat( void )
 }
 
 static ConCommand ch_createairboat( "ch_createairboat", CC_CH_CreateAirboat, "Spawn airboat in front of the player.", FCVAR_CHEAT );
-
+#endif //SecobMod__ALLOW_VALVE_APPROVED_CHEATING
 
 //=========================================================
 //=========================================================
@@ -6294,6 +6321,10 @@ void CBasePlayer::CheatImpulseCommands( int iImpulse )
 	{
 		return;
 	}
+	
+#ifndef SecobMod__ALLOW_VALVE_APPROVED_CHEATING
+return;
+#endif //SecobMod__ALLOW_VALVE_APPROVED_CHEATING
 
 	CBaseEntity *pEntity;
 	trace_t tr;
@@ -6321,16 +6352,20 @@ void CBasePlayer::CheatImpulseCommands( int iImpulse )
 		break;
 
 	case 82:
+		#ifdef SecobMod__ALLOW_VALVE_APPROVED_CHEATING
 		// Cheat to create a jeep in front of the player
 		CreateJeep( this );
+		#endif //SecobMod__ALLOW_VALVE_APPROVED_CHEATING
 		break;
 
 	case 83:
-		// Cheat to create a airboat in front of the player
+		#ifdef SecobMod__ALLOW_VALVE_APPROVED_CHEATING
 		CreateAirboat( this );
+		#endif //SecobMod__ALLOW_VALVE_APPROVED_CHEATING
 		break;
 
 	case 101:
+	#ifdef SecobMod__ALLOW_VALVE_APPROVED_CHEATING
 		gEvilImpulse101 = true;
 
 		EquipSuit();
@@ -6369,16 +6404,20 @@ void CBasePlayer::CheatImpulseCommands( int iImpulse )
 		}
 		
 		gEvilImpulse101		= false;
+		#endif //SecobMod__ALLOW_VALVE_APPROVED_CHEATING
 
 		break;
 
 	case 102:
+	#ifdef SecobMod__ALLOW_VALVE_APPROVED_CHEATING
 		// Gibbage!!!
 		CGib::SpawnRandomGibs( this, 1, GIB_HUMAN );
+	#endif //SecobMod__ALLOW_VALVE_APPROVED_CHEATING
 		break;
 
 	case 103:
-		// What are you doing?
+	#ifdef SecobMod__ALLOW_VALVE_APPROVED_CHEATING
+		// What the hell are you doing?
 		pEntity = FindEntityForward( this, true );
 		if ( pEntity )
 		{
@@ -6386,9 +6425,11 @@ void CBasePlayer::CheatImpulseCommands( int iImpulse )
 			if ( pNPC )
 				pNPC->ReportAIState();
 		}
+	#endif //SecobMod__ALLOW_VALVE_APPROVED_CHEATING
 		break;
 
 	case 106:
+	#ifdef SecobMod__ALLOW_VALVE_APPROVED_CHEATING
 		// Give me the classname and targetname of this entity.
 		pEntity = FindEntityForward( this, true );
 		if ( pEntity )
@@ -6411,9 +6452,11 @@ void CBasePlayer::CheatImpulseCommands( int iImpulse )
 			if ( pEntity->m_iGlobalname != NULL_STRING )
 				Msg( "Globalname: %s\n", STRING(pEntity->m_iGlobalname) );
 		}
+	#endif //SecobMod__ALLOW_VALVE_APPROVED_CHEATING	
 		break;
 
 	case 107:
+	#ifdef SecobMod__ALLOW_VALVE_APPROVED_CHEATING
 		{
 			trace_t tr;
 
@@ -6432,6 +6475,7 @@ void CBasePlayer::CheatImpulseCommands( int iImpulse )
 			if ( pTextureName )
 				Msg( "Texture: %s\n", pTextureName );
 		}
+	#endif //SecobMod__ALLOW_VALVE_APPROVED_CHEATING
 		break;
 
 	//
@@ -6439,6 +6483,7 @@ void CBasePlayer::CheatImpulseCommands( int iImpulse )
 	//
 	case 108:
 	{
+	#ifdef SecobMod__ALLOW_VALVE_APPROVED_CHEATING
 		pEntity = FindEntityForward( this, true );
 		if ( pEntity )
 		{
@@ -6449,26 +6494,34 @@ void CBasePlayer::CheatImpulseCommands( int iImpulse )
 				CAI_BaseNPC::SetDebugNPC( pNPC );
 			}
 		}
+	#endif //SecobMod__ALLOW_VALVE_APPROVED_CHEATING
 		break;
 	}
 
 	case	195:// show shortest paths for entire level to nearest node
 		{
+		#ifdef SecobMod__ALLOW_VALVE_APPROVED_CHEATING
 			Create("node_viewer_fly", GetLocalOrigin(), GetLocalAngles());
+		#endif //SecobMod__ALLOW_VALVE_APPROVED_CHEATING
 		}
 		break;
 	case	196:// show shortest paths for entire level to nearest node
 		{
+		#ifdef SecobMod__ALLOW_VALVE_APPROVED_CHEATING
 			Create("node_viewer_large", GetLocalOrigin(), GetLocalAngles());
+		#endif //SecobMod__ALLOW_VALVE_APPROVED_CHEATING
 		}
 		break;
 	case	197:// show shortest paths for entire level to nearest node
 		{
+		#ifdef SecobMod__ALLOW_VALVE_APPROVED_CHEATING
 			Create("node_viewer_human", GetLocalOrigin(), GetLocalAngles());
+		#endif //SecobMod__ALLOW_VALVE_APPROVED_CHEATING
 		}
 		break;
 	case	202:// Random blood splatter
 		{
+		#ifdef SecobMod__ALLOW_VALVE_APPROVED_CHEATING
 			Vector forward;
 			EyeVectors( &forward );
 			UTIL_TraceLine ( EyePosition(), 
@@ -6480,15 +6533,18 @@ void CBasePlayer::CheatImpulseCommands( int iImpulse )
 				CBloodSplat *pBlood = CREATE_UNSAVED_ENTITY( CBloodSplat, "bloodsplat" );
 				pBlood->Spawn( this );
 			}
+		#endif //SecobMod__ALLOW_VALVE_APPROVED_CHEATING
 		}
 		break;
 	case	203:// remove creature.
 		pEntity = FindEntityForward( this, true );
 		if ( pEntity )
 		{
+		#ifdef SecobMod__ALLOW_VALVE_APPROVED_CHEATING
 			UTIL_Remove( pEntity );
 //			if ( pEntity->m_takedamage )
 //				pEntity->SetThink(SUB_Remove);
+		#endif //SecobMod__ALLOW_VALVE_APPROVED_CHEATING
 		}
 		break;
 	}
@@ -6625,7 +6681,7 @@ bool CBasePlayer::ClientCommand( const CCommand &args )
 		{
 			// set new spectator mode, don't allow OBS_MODE_NONE
 			if ( !SetObserverMode( mode ) )
-				ClientPrint( this, HUD_PRINTCONSOLE, "#Spectator_Mode_Unknown");
+				ClientPrint( this, HUD_PRINTCONSOLE, "#Spectator_Mode_Unkown");
 			else
 				engine->ClientCommand( edict(), "cl_spec_mode %d", mode );
 		}
@@ -6656,7 +6712,7 @@ bool CBasePlayer::ClientCommand( const CCommand &args )
 		
 		return true;
 	}
-	else if ( stricmp( cmd, "spec_prev" ) == 0 ) // chase previous player
+	else if ( stricmp( cmd, "spec_prev" ) == 0 ) // chase prevoius player
 	{
 		if ( GetObserverMode() > OBS_MODE_FIXED )
 		{
@@ -6671,21 +6727,33 @@ bool CBasePlayer::ClientCommand( const CCommand &args )
 		{
 			AttemptToExitFreezeCam();
 		}
-
+		
 		return true;
 	}
+	
 	else if ( stricmp( cmd, "spec_player" ) == 0 ) // chase next player
 	{
 		if ( GetObserverMode() > OBS_MODE_FIXED && args.ArgC() == 2 )
 		{
-			CBasePlayer *target = UTIL_PlayerByCommandArg( args[1] );
+			int index = atoi( args[1] );
+
+			CBasePlayer * target;
+
+			if ( index == 0 )
+			{
+				target = UTIL_PlayerByName( args[1] );
+			}
+			else
+			{
+				target = UTIL_PlayerByIndex( index );
+			}
 
 			if ( IsValidObserverTarget( target ) )
 			{
 				SetObserverTarget( target );
 			}
 		}
-
+		
 		return true;
 	}
 
@@ -6696,26 +6764,16 @@ bool CBasePlayer::ClientCommand( const CCommand &args )
 			 args.ArgC() == 6 )
 		{
 			Vector origin;
- 			origin.x = clamp( atof( args[1] ), MIN_COORD_FLOAT, MAX_COORD_FLOAT );
- 			origin.y = clamp( atof( args[2] ), MIN_COORD_FLOAT, MAX_COORD_FLOAT );
- 			origin.z = clamp( atof( args[3] ), MIN_COORD_FLOAT, MAX_COORD_FLOAT );
+			origin.x = atof( args[1] );
+			origin.y = atof( args[2] );
+			origin.z = atof( args[3] );
 
 			QAngle angle;
 			angle.x = atof( args[4] );
 			angle.y = atof( args[5] );
 			angle.z = 0.0f;
 
-			// If the player jumps outside world extents it will hangs the server
-			CWorld *world = GetWorldEntity();
-			if ( world )
-			{
-				Extent worldExtent;
-				world->GetWorldBounds( worldExtent.lo, worldExtent.hi );
-				VectorMax( origin, worldExtent.lo, origin );
-				VectorMin( origin, worldExtent.hi, origin );
-
-				JumptoPosition( origin, angle );
-			}
+			JumptoPosition( origin, angle );
 		}
 		
 		return true;
@@ -6851,7 +6909,7 @@ bool CBasePlayer::RemovePlayerItem( CBaseCombatWeapon *pItem )
 	{
 		ResetAutoaim( );
 		pItem->Holster( );
-		pItem->SetNextThink( TICK_NEVER_THINK ); // crowbar may be trying to swing again, etc
+		pItem->SetNextThink( TICK_NEVER_THINK );; // crowbar may be trying to swing again, etc
 		pItem->SetThink( NULL );
 	}
 
@@ -7646,7 +7704,7 @@ void CBasePlayer::PlayWearableAnimsForPlaybackEvent( wearableanimplayback_t iPla
 // Purpose: Put the player in the specified team
 //-----------------------------------------------------------------------------
 
-void CBasePlayer::ChangeTeam( int iTeamNum, bool bAutoTeam, bool bSilent, bool bAutoBalance /*= false*/ )
+void CBasePlayer::ChangeTeam( int iTeamNum, bool bAutoTeam, bool bSilent)
 {
 	if ( !GetGlobalTeam( iTeamNum ) )
 	{
@@ -7771,18 +7829,6 @@ BEGIN_DATADESC( CStripWeapons )
 	DEFINE_INPUTFUNC( FIELD_VOID, "StripWeaponsAndSuit", InputStripWeaponsAndSuit ),
 END_DATADESC()
 	
-BEGIN_ENT_SCRIPTDESC( CBasePlayer, CBaseCombatCharacter, "The player entity." )
-	DEFINE_SCRIPTFUNC_NAMED( ScriptIsPlayerNoclipping, "IsNoclipping", "Returns true if the player is in noclip mode." ) 
-	DEFINE_SCRIPTFUNC( ViewPunch, "Ow! Punches the player's view" ) 
-	DEFINE_SCRIPTFUNC( ViewPunchReset, "Reset's the player's view punch" ) 
-	DEFINE_SCRIPTFUNC( SnapEyeAngles, "Snap the player's eye angles to this." ) 
-	DEFINE_SCRIPTFUNC( GetPlayerMins, "" ) 
-	DEFINE_SCRIPTFUNC( GetPlayerMaxs, "" ) 
-	DEFINE_SCRIPTFUNC( SetForceLocalDraw, "Forces the player to be drawn as if they are third person" )
-	DEFINE_SCRIPTFUNC( GetForceLocalDraw, "Gets the state of whether the player is being forced by SetForceLocalDraw to be drawn" )
-	DEFINE_SCRIPTFUNC( GetScriptOverlayMaterial, "Gets the current view overlay material" )
-	DEFINE_SCRIPTFUNC( SetScriptOverlayMaterial, "Sets a view overlay material" )
-END_SCRIPTDESC();
 
 void CStripWeapons::InputStripWeapons(inputdata_t &data)
 {
@@ -7804,7 +7850,18 @@ void CStripWeapons::StripWeapons(inputdata_t &data, bool stripSuit)
 	}
 	else if ( !g_pGameRules->IsDeathmatch() )
 	{
-		pPlayer = UTIL_GetLocalPlayer();
+#ifdef SecobMod__Enable_Fixed_Multiplayer_AI
+	for (int i = 1; i <= gpGlobals->maxClients; i++ ) 
+	{ 
+		CBasePlayer *pPlayer = UTIL_PlayerByIndex( i ); 
+		if ( pPlayer )
+		{
+		pPlayer->RemoveAllItems( stripSuit );
+		}
+	}
+#else
+pPlayer = UTIL_GetLocalPlayer();
+#endif //SecobMod__Enable_Fixed_Multiplayer_AI
 	}
 
 	if ( pPlayer )
@@ -7899,8 +7956,26 @@ void CRevertSaved::Use( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYPE 
 	UTIL_ScreenFadeAll( m_clrRender, Duration(), HoldTime(), FFADE_OUT );
 	SetNextThink( gpGlobals->curtime + LoadTime() );
 	SetThink( &CRevertSaved::LoadThink );
+#ifdef SecobMod__Enable_Fixed_Multiplayer_AI
+	for (int i = 1; i <= gpGlobals->maxClients; i++ ) 
+	{ 
+		CBasePlayer *pPlayer = UTIL_PlayerByIndex( i ); 
+		if ( !pPlayer ) 
+			continue; 
+			
+			if ( pPlayer )
+			{		
+			//Adrian: Setting this flag so we can't move or save a game.
+			pPlayer->pl.deadflag = true;
+			pPlayer->AddFlag( (FL_NOTARGET|FL_FROZEN) );
 
-	CBasePlayer *pPlayer = UTIL_GetLocalPlayer();
+			// clear any pending autosavedangerous
+			g_ServerGameDLL.m_fAutoSaveDangerousTime = 0.0f;
+			g_ServerGameDLL.m_fAutoSaveDangerousMinHealthToCommit = 0.0f;
+			}
+	}
+#else
+CBasePlayer *pPlayer = UTIL_GetLocalPlayer();
 
 	if ( pPlayer )
 	{
@@ -7912,6 +7987,7 @@ void CRevertSaved::Use( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYPE 
 		g_ServerGameDLL.m_fAutoSaveDangerousTime = 0.0f;
 		g_ServerGameDLL.m_fAutoSaveDangerousMinHealthToCommit = 0.0f;
 	}
+#endif //SecobMod__Enable_Fixed_Multiplayer_AI
 }
 
 void CRevertSaved::InputReload( inputdata_t &inputdata )
@@ -7962,6 +8038,16 @@ void CRevertSaved::LoadThink( void )
 	{
 		engine->ServerCommand("reload\n");
 	}
+#ifdef SecobMod__Enable_Fixed_Multiplayer_AI
+//SecobMod__Information: Here we change level to the map we're already on if a vital ally such as Alyx is killed etc etc etc.
+	else
+	{
+	char *szDefaultMapName = new char[32];
+	Q_strncpy( szDefaultMapName, STRING(gpGlobals->mapname), 32 );
+	engine->ChangeLevel( szDefaultMapName, NULL );
+	return;
+	}
+#endif //SecobMod__Enable_Fixed_Multiplayer_AI	
 }
 
 #define SF_SPEED_MOD_SUPPRESS_WEAPONS	(1<<0)	// Take away weapons
@@ -8038,7 +8124,11 @@ void CMovementSpeedMod::InputSpeedMod(inputdata_t &data)
 	}
 	else if ( !g_pGameRules->IsDeathmatch() )
 	{
-		pPlayer = UTIL_GetLocalPlayer();
+#ifdef SecobMod__Enable_Fixed_Multiplayer_AI
+		pPlayer = UTIL_GetNearestPlayer(GetAbsOrigin()); 
+#else
+pPlayer = UTIL_GetLocalPlayer();
+#endif //SecobMod__Enable_Fixed_Multiplayer_AI
 	}
 
 	if ( pPlayer )
@@ -8102,6 +8192,13 @@ void CMovementSpeedMod::InputSpeedMod(inputdata_t &data)
 }
 
 
+void SendProxy_CropFlagsToPlayerFlagBitsLength( const SendProp *pProp, const void *pStruct, const void *pVarData, DVariant *pOut, int iElement, int objectID)
+{
+	int mask = (1<<PLAYER_FLAG_BITS) - 1;
+	int data = *(int *)pVarData;
+
+	pOut->m_Int = ( data & mask );
+}
 // -------------------------------------------------------------------------------- //
 // SendTable for CPlayerState.
 // -------------------------------------------------------------------------------- //
@@ -8141,7 +8238,11 @@ void CMovementSpeedMod::InputSpeedMod(inputdata_t &data)
 		SendPropFloat		( SENDINFO_VECTORELEM(m_vecVelocity, 1), 32, SPROP_NOSCALE|SPROP_CHANGES_OFTEN ),
 		SendPropFloat		( SENDINFO_VECTORELEM(m_vecVelocity, 2), 32, SPROP_NOSCALE|SPROP_CHANGES_OFTEN ),
 
-		SendPropVector		( SENDINFO( m_vecBaseVelocity ), 32, SPROP_NOSCALE ),
+#if PREDICTION_ERROR_CHECK_LEVEL > 1 
+		SendPropVector		( SENDINFO( m_vecBaseVelocity ), -1, SPROP_COORD ),
+#else
+		SendPropVector		( SENDINFO( m_vecBaseVelocity ), 20, 0, -1000, 1000 ),
+#endif
 
 		SendPropEHandle		( SENDINFO( m_hConstraintEntity)),
 		SendPropVector		( SENDINFO( m_vecConstraintCenter), 0, SPROP_NOSCALE ),
@@ -8180,7 +8281,7 @@ void CMovementSpeedMod::InputSpeedMod(inputdata_t &data)
 		SendPropInt		(SENDINFO(m_iBonusProgress), 15 ),
 		SendPropInt		(SENDINFO(m_iBonusChallenge), 4 ),
 		SendPropFloat	(SENDINFO(m_flMaxspeed), 12, SPROP_ROUNDDOWN, 0.0f, 2048.0f ),  // CL
-		SendPropInt		(SENDINFO(m_fFlags), 0, SPROP_UNSIGNED|SPROP_CHANGES_OFTEN ),
+		SendPropInt		(SENDINFO(m_fFlags), PLAYER_FLAG_BITS, SPROP_UNSIGNED|SPROP_CHANGES_OFTEN, SendProxy_CropFlagsToPlayerFlagBitsLength ),
 		SendPropInt		(SENDINFO(m_iObserverMode), 3, SPROP_UNSIGNED ),
 		SendPropEHandle	(SENDINFO(m_hObserverTarget) ),
 		SendPropInt		(SENDINFO(m_iFOV), 8, SPROP_UNSIGNED ),
@@ -8766,58 +8867,6 @@ void CBasePlayer::DeactivateMovementConstraint( )
 }
 
 //-----------------------------------------------------------------------------
-// Purpose: Fight chat spam with a two tiered token bucket
-//-----------------------------------------------------------------------------
-bool CBasePlayer::ArePlayerTalkMessagesAvailable( void )
-{
-	// How long since we last tried to chat?
-	float flTimeElapsedSinceLastMsg = gpGlobals->curtime - m_fLastPlayerTalkAttemptTime;
-	m_fLastPlayerTalkAttemptTime = gpGlobals->curtime;
-
-	// The max messages we can have available
-	// Tier 1 is for short-term spam
-	float flTotalBucketSizeTier1 = sv_chat_bucket_size_tier1.GetFloat();	
-	// rate at which we gain new messages, this slows if we continue to try to spam messages
-	float flSecondsPerMessageTier1 = sv_chat_seconds_per_msg_tier1.GetFloat() - MIN( 0.0f, m_flPlayerTalkAvailableMessagesTier1 );
-
-	// We'll count partial counts of accruing message throughout, as it'll be more consistent
-	float flMessagesGainedTier1 = MAX( 0, flTimeElapsedSinceLastMsg / flSecondsPerMessageTier1 );
-
-	// But we will allow the counter to go negative, so if you keep trying to spam you have to work your way out of a hole.
-	m_flPlayerTalkAvailableMessagesTier1 = MAX( -2.5f, MIN( flTotalBucketSizeTier1, m_flPlayerTalkAvailableMessagesTier1 + flMessagesGainedTier1 ) - 1.0f ); 
-
-	// Tier2 is for curbing longer-term consistent spamming
-	// We'll only allow the long term bucket to accrue if we're not currently in a spammy state
-	if ( m_flPlayerTalkAvailableMessagesTier1 > 0 )
-	{
-		float flTotalBucketSizeTier2 = sv_chat_bucket_size_tier2.GetFloat();
-		float flSecondsPerMessageTier2 = sv_chat_seconds_per_msg_tier2.GetFloat();
-
-		float flMessagesGainedTier2 = MAX( 0, flTimeElapsedSinceLastMsg / flSecondsPerMessageTier2 );
-		m_flPlayerTalkAvailableMessagesTier2 = MAX( 0, MIN( flTotalBucketSizeTier2, m_flPlayerTalkAvailableMessagesTier2 + flMessagesGainedTier2 ) - 1.0f );
-		//Msg( "Elapsed : %f2  Gained : %f2 / %f2 \n", flTimeElapsedSinceLastMsg, flMessagesGainedTier1, flMessagesGainedTier2 );
-	}
-
-	//Msg( "Remaining Msgs : %f2 / %f2\n", m_flPlayerTalkAvailableMessagesTier1, m_flPlayerTalkAvailableMessagesTier2 );
-
-	return m_flPlayerTalkAvailableMessagesTier1 > 1.0f && m_flPlayerTalkAvailableMessagesTier2 > 1.0f;
-}
-
-//-----------------------------------------------------------------------------
-// Purpose: Check if a player can use chat commands at the moment
-//-----------------------------------------------------------------------------
-bool CBasePlayer::CanPlayerTalk()
-{
-	const float talk_interval = 0.66; // min time between say commands from a client
-
-	bool bRateLimitAllowed = LastTimePlayerTalked() + talk_interval < gpGlobals->curtime;
-
-	bool bTokenBucketLimitAllowed = ArePlayerTalkMessagesAvailable();
-
-	return bRateLimitAllowed && bTokenBucketLimitAllowed;
-}
-
-//-----------------------------------------------------------------------------
 // Perhaps a poorly-named function. This function traces against the supplied
 // NPC's hitboxes (instead of hull). If the trace hits a different NPC, the 
 // new NPC is selected. Otherwise, the supplied NPC is determined to be the 
@@ -9012,50 +9061,20 @@ bool CBasePlayer::HasAnyAmmoOfType( int nAmmoIndex )
 	return false;
 }
 
-CVoteController *CBasePlayer::GetTeamVoteController()
-{
-	return g_voteControllerGlobal;
-}
-
 bool CBasePlayer::HandleVoteCommands( const CCommand &args )
 {
-	if( !g_voteControllerGlobal && !GetTeamVoteController()  )
+	if( g_voteController == NULL )
 		return false;
 
 	if(  FStrEq( args[0], "Vote" ) )
 	{
-		if( args.ArgC() < 3 )
+		if( args.ArgC() < 2 )
 			return true;
 
-		const char *pszVoteIdx = args[1];
-		int nVoteIdx = V_atoi( pszVoteIdx );
-
-		const char *arg2 = args[2];
+		const char *arg2 = args[1];
 		char szResultString[MAX_COMMAND_LENGTH];
 
-		CVoteController *pVoteController = NULL;
-
-		// Is there a global or team vote to participate in and if so, which?
-		if ( g_voteControllerGlobal && g_voteControllerGlobal->IsAVoteInProgress() && g_voteControllerGlobal->GetVoteID() == nVoteIdx )
-		{
-			pVoteController = g_voteControllerGlobal;
-		}
-		else if ( GetTeamVoteController() && GetTeamVoteController()->IsAVoteInProgress() && GetTeamVoteController()->GetVoteID() == nVoteIdx )
-		{
-			pVoteController = GetTeamVoteController();
-		}
-		else
-		{
-			Q_snprintf( szResultString, MAX_COMMAND_LENGTH, "Vote failed: no vote with ID %d in progress.\n", nVoteIdx );
-			DevMsg( "%s", szResultString );
-
-			return true;
-		}
-
-		if ( !pVoteController )
-			return true;
-
-		CVoteController::TryCastVoteResult nTryResult = pVoteController->TryCastVote( entindex(), arg2 );
+		CVoteController::TryCastVoteResult nTryResult = g_voteController->TryCastVote( entindex(), arg2 );
 		switch( nTryResult )
 		{
 		case CVoteController::CAST_OK:
@@ -9631,6 +9650,113 @@ void CBasePlayer::AdjustDrownDmg( int nAmount )
 	}
 }
 
+#ifdef SecobMod__USE_PLAYERCLASSES
+void CBasePlayer::SetWalkSpeed(int WalkSpeed)
+{
+        m_iWalkSpeed=WalkSpeed;
+}
+
+void CBasePlayer::SetNormSpeed(int NormSpeed)
+{
+        m_iNormSpeed=NormSpeed;
+}
+
+void CBasePlayer::SetSprintSpeed(int SprintSpeed)
+{
+        m_iSprintSpeed=SprintSpeed;
+}
+
+void CBasePlayer::SetJumpHeight(float JumpHeight)
+{
+        m_iJumpHeight=JumpHeight;
+}
+
+int CBasePlayer::GetWalkSpeed()
+{
+        return m_iWalkSpeed;
+}
+ 
+int CBasePlayer::GetNormSpeed()
+{
+        return m_iNormSpeed;
+}
+
+int CBasePlayer::GetSprintSpeed()
+{
+        return m_iSprintSpeed;
+}
+
+float CBasePlayer::GetJumpHeight()
+{
+        return m_iJumpHeight;
+}
+#endif //SecobMod__USE_PLAYERCLASSES
+
+#ifdef SecobMod__ENABLE_FAKE_PASSENGER_SEATS
+//------------------------------------------------------------------------------
+// A small wrapper around SV_Move that never clips against the supplied entity.
+//------------------------------------------------------------------------------
+static bool TestEntityPosition ( CBasePlayer *pPlayer )
+{	
+	trace_t	trace;
+	UTIL_TraceEntity( pPlayer, pPlayer->GetAbsOrigin(), pPlayer->GetAbsOrigin(), MASK_PLAYERSOLID, &trace );
+	return (trace.startsolid == 0);
+}
+
+static int FindPassableSpace( CBasePlayer *pPlayer, const Vector& direction, float step, Vector& oldorigin )
+{
+	int i;
+	for ( i = 0; i < 100; i++ )
+	{
+		Vector origin = pPlayer->GetAbsOrigin();
+		VectorMA( origin, step, direction, origin );
+		pPlayer->SetAbsOrigin( origin );
+		if ( TestEntityPosition( pPlayer ) )
+		{
+			VectorCopy( pPlayer->GetAbsOrigin(), oldorigin );
+			return 1;
+		}
+	}
+	return 0;
+}
+
+void CBasePlayer::SafeVehicleExit(CBasePlayer *pPlayer)
+{
+CPlayerState *pl = PlayerData();
+	Assert( pl );
+
+SetMoveType( MOVETYPE_WALK );
+Vector oldorigin = GetAbsOrigin();
+	if ( !TestEntityPosition( this ) )
+	{
+		Vector forward, right, up;
+
+		AngleVectors ( pl->v_angle, &forward, &right, &up);
+		
+		// Try to move into the world
+		if ( !FindPassableSpace( this, forward, 1, oldorigin ) )
+		{
+			if ( !FindPassableSpace( this, right, 1, oldorigin ) )
+			{
+				if ( !FindPassableSpace( this, right, -1, oldorigin ) )		// left
+				{
+					if ( !FindPassableSpace( this, up, 1, oldorigin ) )	// up
+					{
+						if ( !FindPassableSpace( this, up, -1, oldorigin ) )	// down
+						{
+							if ( !FindPassableSpace( this, forward, -1, oldorigin ) )	// back
+							{
+							}
+						}
+					}
+				}
+			}
+		}	
+		SetAbsOrigin( oldorigin );
+		AddFlag(FL_ONGROUND);
+	}
+}
+#endif //SecobMod__ENABLE_FAKE_PASSENGER_SEATS
 
 
 #if !defined(NO_STEAM)
@@ -9660,22 +9786,3 @@ uint64 CBasePlayer::GetSteamIDAsUInt64( void )
 	return 0;
 }
 #endif // NO_STEAM
-
-
-//-----------------------------------------------------------------------------
-// Purpose: Filters updates to a variable so that only non-local players see
-// the changes.  This is so we can send a low-res origin to non-local players
-// while sending a hi-res one to the local player.
-// Input  : *pVarData - 
-//			*pOut - 
-//			objectID - 
-//-----------------------------------------------------------------------------
-
-void* SendProxy_SendNonLocalDataTable( const SendProp *pProp, const void *pStruct, const void *pVarData, CSendProxyRecipients *pRecipients, int objectID )
-{
-	pRecipients->SetAllRecipients();
-	pRecipients->ClearRecipient( objectID - 1 );
-	return ( void * )pVarData;
-}
-REGISTER_SEND_PROXY_NON_MODIFIED_POINTER( SendProxy_SendNonLocalDataTable );
-

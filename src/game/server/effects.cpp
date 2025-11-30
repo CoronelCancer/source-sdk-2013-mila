@@ -657,7 +657,8 @@ public:
 	float m_flGibScale;
 	float m_flGibGravityScale;
 
-#if HL2_EPISODIC
+//SecobMod__IFDEF_Fixes
+#ifdef HL2_EPISODIC
 	float m_flMassOverride;	// allow designer to force a mass for gibs in some cases
 #endif
 };
@@ -668,7 +669,8 @@ BEGIN_DATADESC( CEnvShooter )
 	DEFINE_KEYFIELD( m_flGibScale, FIELD_FLOAT ,"scale" ),
 	DEFINE_KEYFIELD( m_flGibGravityScale, FIELD_FLOAT, "gibgravityscale" ),
 
-#if HL2_EPISODIC
+//SecobMod__IFDEF_Fixes
+#ifdef HL2_EPISODIC
 	DEFINE_KEYFIELD( m_flMassOverride, FIELD_FLOAT, "massoverride" ),
 #endif
 
@@ -787,7 +789,8 @@ CGib *CEnvShooter::CreateGib ( void )
 		pGib->AddEffects( EF_NOSHADOW );
 	}
 
-#if HL2_EPISODIC
+//SecobMod__IFDEF_Fixes
+#ifdef HL2_EPISODIC
 	// if a mass override is set, apply it to the gib
 	if (m_flMassOverride != 0)
 	{
@@ -1130,7 +1133,12 @@ Vector CBlood::BloodPosition( CBaseEntity *pActivator )
 		}
 		else
 		{
+		#ifdef SecobMod__Enable_Fixed_Multiplayer_AI
+			player = UTIL_GetNearestVisiblePlayer(this); 
+		#else
 			player = UTIL_GetLocalPlayer();
+		#endif //SecobMod__Enable_Fixed_Multiplayer_AI
+
 		}
 
 		if ( player )
@@ -1491,7 +1499,7 @@ BEGIN_DATADESC( CPrecipitation )
 	DEFINE_KEYFIELD( m_nPrecipType, FIELD_INTEGER, "preciptype" ),
 END_DATADESC()
 
-// Just send the normal entity stuff
+// Just send the normal entity crap
 IMPLEMENT_SERVERCLASS_ST( CPrecipitation, DT_Precipitation)
 	SendPropInt( SENDINFO( m_nPrecipType ), Q_log2( NUM_PRECIPITATION_TYPES ) + 1, SPROP_UNSIGNED )
 END_SEND_TABLE()
@@ -2307,13 +2315,6 @@ void EffectsPrecache( void *pUser )
 	{
 		CBaseEntity::PrecacheScriptSound( "HudChat.Message" );
 	}
-
-#ifdef TF_DLL
-	// For tempfx.
-	CBaseEntity::PrecacheModel( "models/weapons/shells/shell_cigarrette.mdl" );
-	CBaseEntity::PrecacheModel( "models/player/gibs/soldiergib007.mdl" );
-	CBaseEntity::PrecacheModel( "models/player/gibs/soldiergib008.mdl" );
-#endif
 }
 
 PRECACHE_REGISTER_FN( EffectsPrecache );

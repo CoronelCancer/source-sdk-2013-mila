@@ -99,6 +99,25 @@ acttable_t	CWeaponFrag::m_acttable[] =
 	{ ACT_HL2MP_GESTURE_RANGE_ATTACK,	ACT_HL2MP_GESTURE_RANGE_ATTACK_GRENADE,	false },
 	{ ACT_HL2MP_GESTURE_RELOAD,			ACT_HL2MP_GESTURE_RELOAD_GRENADE,		false },
 	{ ACT_HL2MP_JUMP,					ACT_HL2MP_JUMP_GRENADE,					false },
+
+#ifdef SecobMod__Enable_Fixed_Multiplayer_AI
+{ ACT_RANGE_ATTACK1, ACT_RANGE_ATTACK_SLAM, true }, 
+
+	{ ACT_MP_STAND_IDLE,				ACT_HL2MP_IDLE_GRENADE,					false },
+	{ ACT_MP_CROUCH_IDLE,				ACT_HL2MP_IDLE_CROUCH_GRENADE,			false },
+
+	{ ACT_MP_RUN,						ACT_HL2MP_RUN_GRENADE,					false },
+	{ ACT_MP_CROUCHWALK,				ACT_HL2MP_WALK_CROUCH_GRENADE,			false },
+
+	{ ACT_MP_ATTACK_STAND_PRIMARYFIRE,	ACT_HL2MP_GESTURE_RANGE_ATTACK_GRENADE,	false },
+	{ ACT_MP_ATTACK_CROUCH_PRIMARYFIRE,	ACT_HL2MP_GESTURE_RANGE_ATTACK_GRENADE,	false },
+
+	{ ACT_MP_RELOAD_STAND,				ACT_HL2MP_GESTURE_RELOAD_GRENADE,		false },
+	{ ACT_MP_RELOAD_CROUCH,				ACT_HL2MP_GESTURE_RELOAD_GRENADE,		false },
+
+	{ ACT_MP_JUMP,						ACT_HL2MP_JUMP_GRENADE,					false },
+#endif //SecobMod__Enable_Fixed_Multiplayer_AI
+
 };
 
 IMPLEMENT_ACTTABLE(CWeaponFrag);
@@ -123,9 +142,9 @@ END_NETWORK_TABLE()
 
 #ifdef CLIENT_DLL
 BEGIN_PREDICTION_DATA( CWeaponFrag )
-	DEFINE_PRED_FIELD( m_bRedraw, FIELD_BOOLEAN, FTYPEDESC_INSENDTABLE | FTYPEDESC_NOERRORCHECK ),
-	DEFINE_PRED_FIELD( m_fDrawbackFinished, FIELD_BOOLEAN, FTYPEDESC_INSENDTABLE | FTYPEDESC_NOERRORCHECK ),
-	DEFINE_PRED_FIELD( m_AttackPaused, FIELD_INTEGER, FTYPEDESC_INSENDTABLE | FTYPEDESC_NOERRORCHECK ),
+	DEFINE_PRED_FIELD( m_bRedraw, FIELD_BOOLEAN, FTYPEDESC_INSENDTABLE ),
+	DEFINE_PRED_FIELD( m_fDrawbackFinished, FIELD_BOOLEAN, FTYPEDESC_INSENDTABLE ),
+	DEFINE_PRED_FIELD( m_AttackPaused, FIELD_INTEGER, FTYPEDESC_INSENDTABLE ),
 END_PREDICTION_DATA()
 #endif
 
@@ -199,6 +218,24 @@ void CWeaponFrag::Operator_HandleAnimEvent( animevent_t *pEvent, CBaseCombatChar
 		m_flNextPrimaryAttack	= gpGlobals->curtime + RETHROW_DELAY;
 		m_flNextSecondaryAttack	= gpGlobals->curtime + RETHROW_DELAY;
 		m_flTimeWeaponIdle = FLT_MAX; //NOTE: This is set once the animation has finished up!
+#ifdef SecobMod__Enable_Fixed_Multiplayer_AI		
+		// Make a sound designed to scare snipers back into their holes!
+		CBaseCombatCharacter *pOwner = GetOwner();
+
+		if( pOwner )
+		{
+			Vector vecSrc = pOwner->Weapon_ShootPosition();
+			Vector	vecDir;
+
+			AngleVectors( pOwner->EyeAngles(), &vecDir );
+
+			trace_t tr;
+
+			UTIL_TraceLine( vecSrc, vecSrc + vecDir * 1024, MASK_SOLID_BRUSHONLY, pOwner, COLLISION_GROUP_NONE, &tr );
+
+			CSoundEnt::InsertSound( SOUND_DANGER_SNIPERONLY, tr.endpos, 384, 0.2, pOwner );
+		}
+#endif //SecobMod__Enable_Fixed_Multiplayer_AI
 	}
 }
 
@@ -461,10 +498,6 @@ void CWeaponFrag::ThrowGrenade( CBasePlayer *pPlayer )
 	
 	// player "shoot" animation
 	pPlayer->SetAnimation( PLAYER_ATTACK1 );
-
-#ifdef GAME_DLL
-	pPlayer->OnMyWeaponFired( this );
-#endif
 }
 
 //-----------------------------------------------------------------------------

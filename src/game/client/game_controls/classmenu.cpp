@@ -23,7 +23,6 @@
 #include <vgui_controls/TextEntry.h>
 #include <vgui_controls/Button.h>
 #include <vgui_controls/Panel.h>
-#include "inputsystem/iinputsystem.h"
 
 #include "cdll_util.h"
 #include "IGameUIFuncs.h" // for key bindings
@@ -174,7 +173,11 @@ void CClassMenu::OnCommand( const char *command )
 		// the new class right away
 		if ( hud_classautokill.GetBool() )
 		{
-            engine->ClientCmd( "kill" );
+			#ifdef SecobMod__MiscFixes
+				//Too many crashes linked to the following command.
+			#else
+            	engine->ClientCmd( "kill" );
+			#endif //SecobMod__MiscFixes
 		}
 #endif // !CSTRIKE_DLL && !TF_CLIENT_DLL
 	}
@@ -267,7 +270,6 @@ void CClassMenu::OnKeyCodePressed(KeyCode code)
 	case KEY_XSTICK1_LEFT:
 	case KEY_XSTICK2_LEFT:
 	case KEY_LEFT:
-	case STEAMCONTROLLER_DPAD_LEFT:
 		nDir = -1;
 		break;
 
@@ -279,7 +281,6 @@ void CClassMenu::OnKeyCodePressed(KeyCode code)
 	case KEY_XSTICK1_RIGHT:
 	case KEY_XSTICK2_RIGHT:
 	case KEY_RIGHT:
-	case STEAMCONTROLLER_DPAD_RIGHT:
 		nDir = 1;
 		break;
 	}
